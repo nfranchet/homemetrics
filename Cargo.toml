@@ -1,0 +1,55 @@
+[package]
+name = "homemetrics"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# IMAP client et TLS
+imap = "2.4"
+native-tls = "0.2"
+
+# Gestion des emails et parsing MIME
+mail-parser = "0.8"
+lettre = "0.11"
+
+# Serialization et parsing de données
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+csv = "1.3"
+
+# Base de données TimescaleDB/PostgreSQL
+sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "postgres", "chrono", "uuid"] }
+tokio-postgres = "0.7"
+
+# Gestion des dates et heures
+chrono = { version = "0.4", features = ["serde"] }
+
+# Gestion des erreurs
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Configuration
+config = "0.14"
+
+# Logging
+log = "0.4"
+env_logger = "0.10"
+
+# UUID pour les identifiants
+uuid = { version = "1.0", features = ["v4"] }
+
+# Regex pour le parsing
+regex = "1.0"
+
+# Gestion des fichiers et attachments
+tempfile = "3.0"
+base64 = "0.21"
+
+# Arguments de ligne de commande
+clap = { version = "4.0", features = ["derive"] }
+
+# Chargement automatique des fichiers .env
+dotenv = "0.15"
