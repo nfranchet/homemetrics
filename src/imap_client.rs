@@ -6,6 +6,12 @@ use log::{info, debug, warn};
 
 use crate::config::ImapConfig;
 
+pub struct EmailInfo {
+    pub content: Vec<u8>,
+    pub date: chrono::DateTime<chrono::Utc>,
+    pub headers: String,
+}
+
 pub struct ImapClient {
     session: Session<TlsStream<TcpStream>>,
 }
@@ -57,9 +63,10 @@ impl ImapClient {
         Ok(ids_vec)
     }
     
-    pub fn fetch_email(&mut self, message_id: u32) -> Result<Vec<u8>> {
-        debug!("Récupération de l'email ID: {}", message_id);
+    pub fn fetch_email_complete(&mut self, message_id: u32) -> Result<EmailInfo> {
+        debug!("Récupération complète de l'email ID: {}", message_id);
         
+        // Un seul fetch pour récupérer tout le contenu de l'email
         let messages = self.session
             .fetch(message_id.to_string(), "RFC822")
             .context("Impossible de récupérer l'email")?;
@@ -67,83 +74,76 @@ impl ImapClient {
         if let Some(message) = messages.iter().next() {
             if let Some(body) = message.body() {
                 debug!("Email récupéré, taille: {} bytes", body.len());
-                return Ok(body.to_vec());
+                
+                // Parse le contenu avec mail-parser pour extraire les infos
+                if let Ok(email_str) = std::str::from_utf8(body) {
+                    if let Some(parsed_email) = mail_parser::MessageParser::default().parse(email_str) {
+                        // Extraire la date
+                        let email_date = if let Some(date_header) = parsed_email.date() {
+                            chrono::DateTime::from_timestamp(date_header.to_timestamp(), 0)
+                                .map(|dt| dt.with_timezone(&chrono::Utc))
+                                .unwrap_or_else(|| chrono::Utc::now())
+                        } else {
+                            // Fallback : essayer de parser depuis les headers raw
+                            self.parse_date_from_raw_headers(email_str).unwrap_or_else(|| chrono::Utc::now())
+                        };
+                        
+                        // Extraire les headers principaux
+                        let from = parsed_email.from()
+                            .and_then(|addrs| addrs.first())
+                            .map(|addr| {
+                                match (&addr.name, &addr.address) {
+                                    (Some(name), Some(email)) => format!("{} <{}>", name, email),
+                                    (None, Some(email)) => email.to_string(),
+                                    _ => "Expéditeur inconnu".to_string(),
+                                }
+                            })
+                            .unwrap_or_else(|| "Expéditeur inconnu".to_string());
+                        
+                        let subject = parsed_email.subject()
+                            .unwrap_or("Sans objet");
+                        
+                        let headers = format!("De: {}\nObjet: {}", from, subject);
+                        
+                        return Ok(EmailInfo {
+                            content: body.to_vec(),
+                            date: email_date,
+                            headers,
+                        });
+                    }
+                }
+                
+                // Fallback : utiliser l'ancienne méthode si le parsing échoue
+                warn!("Impossible de parser l'email avec mail-parser, utilisation du fallback");
+                return Ok(EmailInfo {
+                    content: body.to_vec(),
+                    date: chrono::Utc::now(),
+                    headers: "Headers non disponibles".to_string(),
+                });
             }
         }
         
         anyhow::bail!("Email introuvable ou vide pour l'ID: {}", message_id);
     }
     
-    pub fn fetch_email_date(&mut self, message_id: u32) -> Result<chrono::DateTime<chrono::Utc>> {
-        debug!("Récupération de la date de l'email ID: {}", message_id);
-        
-        let messages = self.session
-            .fetch(message_id.to_string(), "ENVELOPE")
-            .context("Impossible de récupérer l'envelope de l'email")?;
-        
-        if let Some(message) = messages.iter().next() {
-            if let Some(envelope) = message.envelope() {
-                if let Some(date_bytes) = &envelope.date {
-                    let date_str = String::from_utf8_lossy(date_bytes);
-                    debug!("Date brute de l'email: {}", date_str);
-                    
-                    // Essayer de parser la date RFC 2822 de l'email
-                    if let Ok(parsed_date) = chrono::DateTime::parse_from_rfc2822(&date_str) {
-                        return Ok(parsed_date.with_timezone(&chrono::Utc));
-                    }
-                    
-                    // Fallback : essayer d'autres formats de date communs
-                    let fallback_formats = [
-                        "%a, %d %b %Y %H:%M:%S %z",
-                        "%d %b %Y %H:%M:%S %z",
-                        "%Y-%m-%d %H:%M:%S %z",
-                    ];
-                    
-                    for format in &fallback_formats {
-                        if let Ok(parsed_date) = chrono::DateTime::parse_from_str(&date_str, format) {
-                            return Ok(parsed_date.with_timezone(&chrono::Utc));
-                        }
-                    }
-                    
-                    warn!("Impossible de parser la date de l'email '{}', utilisation de la date actuelle", date_str);
+    fn parse_date_from_raw_headers(&self, email_content: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+        // Chercher la ligne Date: dans les headers
+        for line in email_content.lines().take(50) { // Limiter aux premiers headers
+            if line.is_empty() {
+                break; // Fin des headers
+            }
+            
+            if let Some(date_part) = line.strip_prefix("Date: ") {
+                // Essayer de parser la date RFC 2822
+                if let Ok(parsed_date) = chrono::DateTime::parse_from_rfc2822(date_part.trim()) {
+                    return Some(parsed_date.with_timezone(&chrono::Utc));
                 }
             }
         }
-        
-        // Fallback : utiliser la date actuelle si impossible de récupérer la date de l'email
-        Ok(chrono::Utc::now())
+        None
     }
     
-    pub fn fetch_email_headers(&mut self, message_id: u32) -> Result<String> {
-        debug!("Récupération des headers de l'email ID: {}", message_id);
-        
-        let messages = self.session
-            .fetch(message_id.to_string(), "ENVELOPE")
-            .context("Impossible de récupérer les headers de l'email")?;
-        
-        if let Some(message) = messages.iter().next() {
-            if let Some(envelope) = message.envelope() {
-                let subject = envelope.subject.as_ref()
-                    .map(|s| String::from_utf8_lossy(s).to_string())
-                    .unwrap_or_else(|| "Sans objet".to_string());
-                
-                let from = envelope.from.as_ref()
-                    .and_then(|addresses| addresses.first())
-                    .map(|addr| {
-                        let mailbox = addr.mailbox.as_ref()
-                            .map(|m| String::from_utf8_lossy(m)).unwrap_or_default();
-                        let host = addr.host.as_ref()
-                            .map(|h| String::from_utf8_lossy(h)).unwrap_or_default();
-                        format!("{}@{}", mailbox, host)
-                    })
-                    .unwrap_or_else(|| "Expéditeur inconnu".to_string());
-                
-                return Ok(format!("De: {}\nObjet: {}", from, subject));
-            }
-        }
-        
-        Ok("Headers non disponibles".to_string())
-    }
+
     
     pub fn logout(mut self) -> Result<()> {
         info!("Déconnexion du serveur IMAP");

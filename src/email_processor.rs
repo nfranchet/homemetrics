@@ -140,34 +140,27 @@ impl EmailProcessor {
             debug!("Traitement de l'email ID: {}", message_id);
         }
         
-        // 1. Récupérer la date de l'email (nécessaire pour les deux modes)
-        let email_date = imap_client.fetch_email_date(message_id)
-            .context("Impossible de récupérer la date de l'email")?;
+        // 1. Récupérer toutes les informations de l'email en un seul appel
+        let email_info = imap_client.fetch_email_complete(message_id)
+            .context("Impossible de récupérer l'email complet")?;
         
-        // 2. En mode dry-run, afficher les headers
+        // 2. En mode dry-run, afficher les headers et la date
         if is_dry_run {
-            let headers = imap_client.fetch_email_headers(message_id)
-                .context("Impossible de récupérer les headers de l'email")?;
-            
             println!("📋 Headers:");
-            println!("{}", headers);
+            println!("{}", email_info.headers);
             println!();
             
-            println!("📅 Date de l'email: {}", email_date.format("%Y-%m-%d %H:%M:%S UTC"));
+            println!("📅 Date de l'email: {}", email_info.date.format("%Y-%m-%d %H:%M:%S UTC"));
             println!();
         }
-        
-        // 3. Récupérer le contenu de l'email
-        let email_content = imap_client.fetch_email(message_id)
-            .context("Impossible de récupérer l'email")?;
         
         // 4. En mode dry-run, afficher des informations sur l'email
         if is_dry_run {
             println!("📄 Contenu de l'email:");
-            println!("   Taille: {} bytes", email_content.len());
+            println!("   Taille: {} bytes", email_info.content.len());
             
             // Essayer d'afficher un aperçu du contenu textuel
-            if let Ok(content_str) = std::str::from_utf8(&email_content) {
+            if let Ok(content_str) = std::str::from_utf8(&email_info.content) {
                 let lines: Vec<&str> = content_str.lines().collect();
                 let preview_lines = std::cmp::min(10, lines.len());
                 
@@ -189,7 +182,7 @@ impl EmailProcessor {
         }
         
         // 5. Extraire les pièces jointes
-        let attachments = AttachmentParser::parse_email(&email_content)
+        let attachments = AttachmentParser::parse_email(&email_info.content)
             .context("Erreur lors de l'extraction des pièces jointes")?;
         
         if attachments.is_empty() {
@@ -214,7 +207,7 @@ impl EmailProcessor {
                 // Mode dry-run : afficher info et sauvegarder seulement
                 AttachmentParser::display_attachment_info(&attachment);
                 
-                match AttachmentParser::save_attachment_to_data_dir_with_date(&attachment, &self.config.data_dir, Some(email_date)) {
+                match AttachmentParser::save_attachment_to_data_dir_with_date(&attachment, &self.config.data_dir, Some(email_info.date)) {
                     Ok(path) => {
                         println!("💾 Sauvegardé dans: {:?}", path);
                     }
