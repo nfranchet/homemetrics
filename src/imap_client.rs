@@ -3,7 +3,6 @@ use imap::Session;
 use native_tls::{TlsConnector, TlsStream};
 use std::net::TcpStream;
 use log::{info, debug, warn};
-use chrono::{DateTime, Utc};
 
 use crate::config::ImapConfig;
 

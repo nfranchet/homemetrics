@@ -37,7 +37,19 @@ impl EmailProcessor {
     
     pub async fn process_emails(&mut self, limit: Option<usize>) -> Result<usize> {
         info!("Démarrage du traitement des emails X-Sense");
+        self.process_emails_common(limit, false).await
+    }
+    
+    pub async fn process_emails_dry_run(&self, limit: Option<usize>) -> Result<usize> {
+        println!("\n{}", "=".repeat(80));
+        println!("🧪 MODE DRY-RUN - ANALYSE DES EMAILS X-SENSE");
+        println!("{}", "=".repeat(80));
         
+        self.process_emails_common(limit, true).await
+    }
+    
+    // Fonction commune pour traiter les emails en mode dry-run ou normal
+    async fn process_emails_common(&self, limit: Option<usize>, is_dry_run: bool) -> Result<usize> {
         // 1. Se connecter au serveur IMAP
         let mut imap_client = ImapClient::new(&self.config.imap).await
             .context("Impossible de se connecter au serveur IMAP")?;
@@ -47,8 +59,17 @@ impl EmailProcessor {
             .context("Erreur lors de la recherche d'emails")?;
         
         if message_ids.is_empty() {
-            info!("Aucun email trouvé correspondant aux critères");
+            if is_dry_run {
+                println!("❌ Aucun email trouvé correspondant aux critères");
+                println!("   Critères: De 'support@x-sense.com' avec objet commençant par 'Votre exportation de'");
+            } else {
+                info!("Aucun email trouvé correspondant aux critères");
+            }
             return Ok(0);
+        }
+        
+        if is_dry_run {
+            println!("✅ Trouvé {} email(s) correspondant aux critères\n", message_ids.len());
         }
         
         let mut total_processed = 0;
@@ -61,17 +82,30 @@ impl EmailProcessor {
             message_ids
         };
         
-        for message_id in emails_to_process {
-            match self.process_single_email(&mut imap_client, message_id).await {
+        for (index, message_id) in emails_to_process.iter().enumerate() {
+            if is_dry_run {
+                println!("📧 Email {}/{} (ID: {})", index + 1, emails_to_process.len(), message_id);
+                println!("{}", "-".repeat(60));
+            }
+            
+            match self.process_single_email_common(&mut imap_client, *message_id, is_dry_run).await {
                 Ok(readings_count) => {
                     total_processed += 1;
                     total_readings_saved += readings_count;
-                    info!("Email {} traité avec succès: {} lectures sauvegardées", 
-                          message_id, readings_count);
+                    
+                    if is_dry_run {
+                        println!("✅ Email {} analysé avec succès\n", message_id);
+                    } else {
+                        info!("Email {} traité avec succès: {} lectures sauvegardées", 
+                              message_id, readings_count);
+                    }
                 }
                 Err(e) => {
-                    error!("Erreur lors du traitement de l'email {}: {}", message_id, e);
-                    // Continuer avec les autres emails
+                    if is_dry_run {
+                        println!("❌ Erreur lors de l'analyse de l'email {}: {}\n", message_id, e);
+                    } else {
+                        error!("Erreur lors du traitement de l'email {}: {}", message_id, e);
+                    }
                 }
             }
         }
@@ -80,133 +114,106 @@ impl EmailProcessor {
         imap_client.logout()
             .context("Erreur lors de la déconnexion IMAP")?;
         
-        info!("Traitement terminé: {} emails traités, {} lectures de température sauvegardées", 
-              total_processed, total_readings_saved);
-        
-        Ok(total_processed)
-    }
-    
-    pub async fn process_emails_dry_run(&self, limit: Option<usize>) -> Result<usize> {
-        println!("\n{}", "=".repeat(80));
-        println!("🧪 MODE DRY-RUN - ANALYSE DES EMAILS X-SENSE");
-        println!("{}", "=".repeat(80));
-        
-        // 1. Se connecter au serveur IMAP
-        let mut imap_client = ImapClient::new(&self.config.imap).await
-            .context("Impossible de se connecter au serveur IMAP")?;
-        
-        // 2. Rechercher les emails de support@x-sense.com
-        let message_ids = imap_client.search_xsense_emails()
-            .context("Erreur lors de la recherche d'emails")?;
-        
-        if message_ids.is_empty() {
-            println!("❌ Aucun email trouvé correspondant aux critères");
-            println!("   Critères: De 'support@x-sense.com' avec objet commençant par 'Votre exportation de'");
-            return Ok(0);
-        }
-        
-        println!("✅ Trouvé {} email(s) correspondant aux critères\n", message_ids.len());
-        
-        let mut total_processed = 0;
-        
-        // 3. Analyser chaque email trouvé (avec limite optionnelle)
-        let emails_to_process: Vec<_> = if let Some(limit) = limit {
-            message_ids.iter().take(limit).collect()
+        if is_dry_run {
+            println!("{}", "=".repeat(80));
+            println!("🏁 Analyse terminée: {} emails analysés sur {}", total_processed, emails_to_process.len());
+            println!("📁 Pièces jointes sauvegardées dans: {}", self.config.data_dir);
+            println!("{}", "=".repeat(80));
         } else {
-            message_ids.iter().collect()
-        };
-        
-        for (index, message_id) in emails_to_process.iter().enumerate() {
-            println!("📧 Email {}/{} (ID: {})", index + 1, emails_to_process.len(), message_id);
-            println!("{}", "-".repeat(60));
-            
-            match self.dry_run_process_single_email(&mut imap_client, **message_id).await {
-                Ok(_) => {
-                    total_processed += 1;
-                    println!("✅ Email {} analysé avec succès\n", message_id);
-                }
-                Err(e) => {
-                    println!("❌ Erreur lors de l'analyse de l'email {}: {}\n", message_id, e);
-                }
-            }
+            info!("Traitement terminé: {} emails traités, {} lectures de température sauvegardées", 
+                  total_processed, total_readings_saved);
         }
-        
-        // 4. Se déconnecter proprement
-        imap_client.logout()
-            .context("Erreur lors de la déconnexion IMAP")?;
-        
-        println!("{}", "=".repeat(80));
-        println!("🏁 Analyse terminée: {} emails analysés sur {}", total_processed, message_ids.len());
-        println!("📁 Pièces jointes sauvegardées dans: {}", self.config.data_dir);
-        println!("{}", "=".repeat(80));
         
         Ok(total_processed)
     }
     
-    async fn dry_run_process_single_email(
-        &self, 
-        imap_client: &mut ImapClient, 
-        message_id: u32
-    ) -> Result<()> {
-        // 1. Récupérer les headers de l'email
-        let headers = imap_client.fetch_email_headers(message_id)
-            .context("Impossible de récupérer les headers de l'email")?;
+    // Fonction commune pour traiter un seul email selon le mode
+    async fn process_single_email_common(
+        &self,
+        imap_client: &mut ImapClient,
+        message_id: u32,
+        is_dry_run: bool,
+    ) -> Result<usize> {
+        if is_dry_run {
+            debug!("Analyse de l'email ID: {}", message_id);
+        } else {
+            debug!("Traitement de l'email ID: {}", message_id);
+        }
         
-        println!("📋 Headers:");
-        println!("{}", headers);
-        println!();
-        
-        // 2. Récupérer la date de l'email
+        // 1. Récupérer la date de l'email (nécessaire pour les deux modes)
         let email_date = imap_client.fetch_email_date(message_id)
             .context("Impossible de récupérer la date de l'email")?;
         
-        println!("📅 Date de l'email: {}", email_date.format("%Y-%m-%d %H:%M:%S UTC"));
-        println!();
+        // 2. En mode dry-run, afficher les headers
+        if is_dry_run {
+            let headers = imap_client.fetch_email_headers(message_id)
+                .context("Impossible de récupérer les headers de l'email")?;
+            
+            println!("📋 Headers:");
+            println!("{}", headers);
+            println!();
+            
+            println!("📅 Date de l'email: {}", email_date.format("%Y-%m-%d %H:%M:%S UTC"));
+            println!();
+        }
         
         // 3. Récupérer le contenu de l'email
         let email_content = imap_client.fetch_email(message_id)
             .context("Impossible de récupérer l'email")?;
         
-        // 3. Afficher des informations sur l'email
-        println!("📄 Contenu de l'email:");
-        println!("   Taille: {} bytes", email_content.len());
-        
-        // Essayer d'afficher un aperçu du contenu textuel
-        if let Ok(content_str) = std::str::from_utf8(&email_content) {
-            let lines: Vec<&str> = content_str.lines().collect();
-            let preview_lines = std::cmp::min(10, lines.len());
+        // 4. En mode dry-run, afficher des informations sur l'email
+        if is_dry_run {
+            println!("📄 Contenu de l'email:");
+            println!("   Taille: {} bytes", email_content.len());
             
-            println!("   Aperçu (premières {} lignes):", preview_lines);
-            for (i, line) in lines.iter().take(preview_lines).enumerate() {
-                let preview_line = if line.len() > 80 {
-                    format!("{}...", &line[..77])
-                } else {
-                    line.to_string()
-                };
-                println!("   {:2}: {}", i + 1, preview_line);
+            // Essayer d'afficher un aperçu du contenu textuel
+            if let Ok(content_str) = std::str::from_utf8(&email_content) {
+                let lines: Vec<&str> = content_str.lines().collect();
+                let preview_lines = std::cmp::min(10, lines.len());
+                
+                println!("   Aperçu (premières {} lignes):", preview_lines);
+                for (i, line) in lines.iter().take(preview_lines).enumerate() {
+                    let preview_line = if line.len() > 80 {
+                        format!("{}...", &line[..77])
+                    } else {
+                        line.to_string()
+                    };
+                    println!("   {:2}: {}", i + 1, preview_line);
+                }
+                
+                if lines.len() > preview_lines {
+                    println!("   ... ({} lignes supplémentaires)", lines.len() - preview_lines);
+                }
             }
-            
-            if lines.len() > preview_lines {
-                println!("   ... ({} lignes supplémentaires)", lines.len() - preview_lines);
-            }
+            println!();
         }
-        println!();
         
-        // 4. Extraire et analyser les pièces jointes
+        // 5. Extraire les pièces jointes
         let attachments = AttachmentParser::parse_email(&email_content)
             .context("Erreur lors de l'extraction des pièces jointes")?;
         
         if attachments.is_empty() {
-            println!("📎 Aucune pièce jointe trouvée");
-        } else {
+            if is_dry_run {
+                println!("📎 Aucune pièce jointe trouvée");
+            } else {
+                warn!("Aucune pièce jointe trouvée dans l'email {}", message_id);
+            }
+            return Ok(0);
+        }
+        
+        if is_dry_run {
             println!("📎 Pièces jointes trouvées: {}", attachments.len());
             println!();
-            
-            for attachment in attachments {
-                // Afficher les informations de la pièce jointe
+        }
+        
+        let mut total_readings = 0;
+        
+        // 6. Traiter chaque pièce jointe
+        for attachment in attachments {
+            if is_dry_run {
+                // Mode dry-run : afficher info et sauvegarder seulement
                 AttachmentParser::display_attachment_info(&attachment);
                 
-                // Sauvegarder dans le répertoire data
                 match AttachmentParser::save_attachment_to_data_dir_with_date(&attachment, &self.config.data_dir, Some(email_date)) {
                     Ok(path) => {
                         println!("💾 Sauvegardé dans: {:?}", path);
@@ -216,46 +223,19 @@ impl EmailProcessor {
                     }
                 }
                 println!();
-            }
-        }
-        
-        Ok(())
-    }
-    
-    async fn process_single_email(
-        &self, 
-        imap_client: &mut ImapClient, 
-        message_id: u32
-    ) -> Result<usize> {
-        debug!("Traitement de l'email ID: {}", message_id);
-        
-        // 1. Récupérer le contenu de l'email
-        let email_content = imap_client.fetch_email(message_id)
-            .context("Impossible de récupérer l'email")?;
-        
-        // 2. Extraire les pièces jointes
-        let attachments = AttachmentParser::parse_email(&email_content)
-            .context("Erreur lors de l'extraction des pièces jointes")?;
-        
-        if attachments.is_empty() {
-            warn!("Aucune pièce jointe trouvée dans l'email {}", message_id);
-            return Ok(0);
-        }
-        
-        let mut total_readings = 0;
-        
-        // 3. Traiter chaque pièce jointe
-        for attachment in attachments {
-            match self.process_attachment(&attachment).await {
-                Ok(readings_count) => {
-                    total_readings += readings_count;
-                    info!("Pièce jointe '{}' traitée: {} lectures", 
-                          attachment.filename, readings_count);
-                }
-                Err(e) => {
-                    error!("Erreur lors du traitement de la pièce jointe '{}': {}", 
-                           attachment.filename, e);
-                    // Continuer avec les autres pièces jointes
+            } else {
+                // Mode normal : traitement complet avec base de données
+                match self.process_attachment(&attachment).await {
+                    Ok(readings_count) => {
+                        total_readings += readings_count;
+                        info!("Pièce jointe '{}' traitée: {} lectures", 
+                              attachment.filename, readings_count);
+                    }
+                    Err(e) => {
+                        error!("Erreur lors du traitement de la pièce jointe '{}': {}", 
+                               attachment.filename, e);
+                        // Continuer avec les autres pièces jointes
+                    }
                 }
             }
         }

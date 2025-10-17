@@ -395,17 +395,7 @@ impl AttachmentParser {
         }
     }
     
-    // Génère des données CSV de test pour la démonstration
-    fn create_sample_csv_data() -> Vec<u8> {
-        let csv_content = r#"timestamp,sensor_id,temperature,humidity,location
-2024-10-16 10:00:00,SENSOR001,22.5,45.2,Living Room
-2024-10-16 10:15:00,SENSOR001,22.7,44.8,Living Room
-2024-10-16 10:30:00,SENSOR002,21.2,50.1,Bedroom
-2024-10-16 10:45:00,SENSOR002,21.0,51.3,Bedroom
-2024-10-16 11:00:00,SENSOR003,23.1,42.5,Kitchen
-"#;
-        csv_content.as_bytes().to_vec()
-    }
+
     
     #[allow(dead_code)]
     fn is_data_file(filename: &str) -> bool {
@@ -418,9 +408,7 @@ impl AttachmentParser {
         lowercase_name.ends_with(".xls")
     }
     
-    pub fn save_attachment_to_data_dir(attachment: &Attachment, data_dir: &str) -> Result<PathBuf> {
-        Self::save_attachment_to_data_dir_with_date(attachment, data_dir, None)
-    }
+
     
     pub fn save_attachment_to_data_dir_with_date(
         attachment: &Attachment, 
