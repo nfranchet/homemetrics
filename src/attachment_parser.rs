@@ -3,7 +3,7 @@ use log::{info, debug};
 use std::path::PathBuf;
 use std::fs;
 use chrono::Utc;
-use mail_parser::MessageParser;
+use mail_parser::{MessageParser, MimeHeaders};
 use base64::{Engine as _, engine::general_purpose};
 
 #[derive(Debug)]
@@ -218,12 +218,14 @@ impl AttachmentParser {
             for (i, part) in message.attachments().enumerate() {
                 debug!("Processing attachment {}", i);
                 
+                
                 // Essayer d'extraire le contenu réel de la pièce jointe
                 let contents = part.contents();
                 debug!("Attachment {} content size: {} bytes", i, contents.len());
                 
-                // Pour l'instant, créer un nom de fichier basé sur l'index mais avec le vrai contenu
-                let filename = format!("x_sense_export_{}.csv", i + 1);
+                // Essayer d'extraire le vrai nom du fichier
+                let filename = Self::extract_real_filename_from_part(part, i);
+                debug!("Extracted filename for attachment {}: {}", i, filename);
                 
                 // Si le contenu semble valide, l'utiliser
                 if contents.len() > 10 {
@@ -237,22 +239,24 @@ impl AttachmentParser {
                         content_type,
                     });
                 } else {
-                    // Fallback vers les données de test
-                    debug!("Content too small, using test data");
-                    attachments.push(Attachment {
-                        filename,
-                        content: Self::create_sample_csv_data(),
-                        content_type: "text/csv".to_string(),
-                    });
+                    debug!("Content too small for attachment {}, skipping", i);
                 }
-                
-                // Prendre seulement la première pièce jointe pour l'instant
-                break;
             }
         }
         
         Ok(())
     }
+    
+    fn extract_real_filename_from_part(part: &mail_parser::MessagePart, index: usize) -> String {
+        // Essayer différentes méthodes pour extraire le nom du fichier
+        
+        debug!("Trying to extract filename from attachment {}", index);
+        
+        
+        let filename = part.attachment_name().unwrap().to_string();
+        debug!("Generated filename: {}", filename);
+        filename
+    }    
     
     fn extract_filename_from_headers(headers: &str) -> Option<String> {
         // Chercher filename= dans les headers
