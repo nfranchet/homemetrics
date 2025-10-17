@@ -14,7 +14,6 @@ pub struct ImapConfig {
     pub port: u16,
     pub username: String,
     pub password: String,
-    pub mailbox: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,8 +43,6 @@ impl Config {
                     .expect("IMAP_USERNAME doit être défini"),
                 password: std::env::var("IMAP_PASSWORD")
                     .expect("IMAP_PASSWORD doit être défini"),
-                mailbox: std::env::var("IMAP_MAILBOX")
-                    .unwrap_or_else(|_| "INBOX".to_string()),
             },
             database: DatabaseConfig {
                 host: std::env::var("DB_HOST")

@@ -284,6 +284,7 @@ impl EmailProcessor {
         Ok(saved_count)
     }
     
+    #[allow(dead_code)]
     pub async fn get_recent_readings(&self, sensor_id: Option<&str>, limit: i64) -> Result<Vec<crate::temperature_extractor::TemperatureReading>> {
         if let Some(ref database) = self.database {
             database.get_latest_readings(sensor_id, limit).await
@@ -292,6 +293,7 @@ impl EmailProcessor {
         }
     }
     
+    #[allow(dead_code)]
     pub async fn close(self) -> Result<()> {
         info!("Fermeture du processeur d'emails");
         if let Some(database) = self.database {

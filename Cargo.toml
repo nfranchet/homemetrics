@@ -5,14 +5,14 @@ edition = "2021"
 
 [dependencies]
 # Async runtime
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.40", features = ["full"] }
 
 # IMAP client et TLS
 imap = "2.4"
 native-tls = "0.2"
 
 # Gestion des emails et parsing MIME
-mail-parser = "0.8"
+mail-parser = "0.9"
 lettre = "0.11"
 
 # Serialization et parsing de données
@@ -36,20 +36,20 @@ config = "0.14"
 
 # Logging
 log = "0.4"
-env_logger = "0.10"
+env_logger = "0.11"
 
 # UUID pour les identifiants
-uuid = { version = "1.0", features = ["v4"] }
+uuid = { version = "1.11", features = ["v4"] }
 
 # Regex pour le parsing
-regex = "1.0"
+regex = "1.11"
 
 # Gestion des fichiers et attachments
-tempfile = "3.0"
-base64 = "0.21"
+tempfile = "3.13"
+base64 = "0.22"
 
 # Arguments de ligne de commande
-clap = { version = "4.0", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 
 # Chargement automatique des fichiers .env
 dotenv = "0.15"

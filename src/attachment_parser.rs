@@ -1,6 +1,6 @@
 use anyhow::{Result, Context};
 use log::{info, debug};
-use std::path::{PathBuf, Path};
+use std::path::PathBuf;
 use std::fs;
 use chrono::Utc;
 
@@ -52,6 +52,7 @@ impl AttachmentParser {
         csv_content.as_bytes().to_vec()
     }
     
+    #[allow(dead_code)]
     fn is_data_file(filename: &str) -> bool {
         let lowercase_name = filename.to_lowercase();
         lowercase_name.ends_with(".csv") ||
