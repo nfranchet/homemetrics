@@ -1,0 +1,94 @@
+name: homemetrics Build
+
+on:
+  push:
+    branches:
+      - main
+      - gha_fixes*
+    #paths:
+    #  - '**/homemetrics/**'
+    #  - '**/.github/workflows/homemetrics.yml'
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+    branches:
+      - main
+      - gha_fixes*
+    #paths:
+    #  - '**/homemetrics/**'
+    #  - '**/.github/workflows/homemetrics.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build_homemetrics:
+    permissions:
+      contents: read
+      packages: write
+
+    # Service containers
+    #services:
+      # Label used to access the service container
+      #postgres:
+      #  # Docker Hub image
+      #  image: postgres
+      #  # Provide the password for postgres
+      #  env:
+      #    POSTGRES_PASSWORD: admin
+      #    POSTGRES_USER: admin
+      #  # Set health checks to wait until postgres has started
+      #  options: >-
+      #    --health-cmd pg_isready
+      #    --health-interval 10s
+      #    --health-timeout 5s
+      #    --health-retries 5
+      #  ports:
+      #      # Maps tcp port 5432 on service container to the host
+      #      - 5432:5432
+
+    # Run on this container
+    runs-on: ubuntu-latest
+    #defaults:
+    #  run:
+    #    working-directory: ./homemetrics
+
+    steps:
+    - uses: actions/checkout@v3
+
+    #- name: Add files into PG and execute them
+    #  run: |
+    #    export DOCKER_CONTAINER=$(docker ps -q)
+    #    echo "DOCKER_CONTAINER=$DOCKER_CONTAINER"
+    #    echo "docker cp $(pwd)/.devcontainer/initdb ${DOCKER_CONTAINER}:/docker-entrypoint-initdb.d"
+    #    docker cp $(pwd)/.devcontainer/initdb/00_create_dbs.sh ${DOCKER_CONTAINER}:/docker-entrypoint-initdb.d/00_create_dbs.sh
+    #    docker exec -u root ${DOCKER_CONTAINER} bash /docker-entrypoint-initdb.d/00_create_dbs.sh
+
+    ## Fix the tests, the env file point to a wrong database
+    #- name: Fix env for tests
+    #  run: sed -i s/172.21.10.5/127.0.0.1/g .env 
+         
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Update Rust
+      run: rustup toolchain install stable --profile minimal --no-self-update  
+
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: homemetrics
+  
+    - name: Build homemetrics
+      run: cargo build --verbose --release
+ 
+    - name: Build container image
+      run: docker build -t ghcr.io/nfranchet/homemetrics:0.0.1 .
+
+    - name: Push image to GH container
+      run: docker push ghcr.io/nfranchet/homemetrics:0.0.1
