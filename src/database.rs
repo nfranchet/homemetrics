@@ -1,5 +1,5 @@
 use anyhow::{Result, Context};
-use log::{info, debug};
+use log::{info, debug, warn};
 use sqlx::{PgPool, Row};
 
 use crate::config::DatabaseConfig;
@@ -35,11 +35,19 @@ impl Database {
     async fn create_tables_if_not_exists(&self) -> Result<()> {
         info!("Vérification/création des tables de base de données");
         
-        // Créer l'extension TimescaleDB si elle n'existe pas
-        sqlx::query("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
+        // Essayer de créer l'extension TimescaleDB si disponible
+        let timescaledb_available = match sqlx::query("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
             .execute(&self.pool)
-            .await
-            .context("Impossible de créer l'extension TimescaleDB")?;
+            .await {
+                Ok(_) => {
+                    info!("✅ Extension TimescaleDB créée/disponible");
+                    true
+                },
+                Err(e) => {
+                    warn!("⚠️  TimescaleDB non disponible, utilisation de PostgreSQL standard: {}", e);
+                    false
+                }
+            };
         
         // Créer la table des capteurs
         sqlx::query(

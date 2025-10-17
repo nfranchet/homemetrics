@@ -202,19 +202,19 @@ impl EmailProcessor {
         let mut total_readings = 0;
         
         // 6. Traiter chaque pièce jointe
-        for attachment in attachments {
+        for attachment in attachments {                            
+            match AttachmentParser::save_attachment_to_data_dir_with_date(&attachment, &self.config.data_dir, Some(email_info.date)) {
+                Ok(path) => {
+                    println!("💾 Sauvegardé dans: {:?}", path);
+                }
+                Err(e) => {
+                    println!("❌ Erreur de sauvegarde: {}", e);
+                }
+            }
+
             if is_dry_run {
                 // Mode dry-run : afficher info et sauvegarder seulement
                 AttachmentParser::display_attachment_info(&attachment);
-                
-                match AttachmentParser::save_attachment_to_data_dir_with_date(&attachment, &self.config.data_dir, Some(email_info.date)) {
-                    Ok(path) => {
-                        println!("💾 Sauvegardé dans: {:?}", path);
-                    }
-                    Err(e) => {
-                        println!("❌ Erreur de sauvegarde: {}", e);
-                    }
-                }
                 println!();
             } else {
                 // Mode normal : traitement complet avec base de données

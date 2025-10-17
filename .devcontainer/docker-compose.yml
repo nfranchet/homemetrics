@@ -9,7 +9,7 @@ services:
     command: sleep infinity
 
   db:
-    image: postgres:latest
+    image: timescale/timescaledb:latest-pg15
     restart: unless-stopped
     volumes:
       - postgres-data-hn-metrics:/var/lib/postgresql/data

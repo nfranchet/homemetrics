@@ -23,9 +23,13 @@ impl TemperatureExtractor {
     pub fn extract_from_attachment(attachment: &Attachment) -> Result<Vec<TemperatureReading>> {
         info!("Extraction des données de température depuis: {}", attachment.filename);
         
+        // Extraire le nom du sensor depuis le nom de fichier
+        let sensor_name = Self::extract_sensor_name(&attachment.filename)?;
+        debug!("Nom du sensor extrait: {}", sensor_name);
+        
         match attachment.filename.to_lowercase() {
             name if name.ends_with(".csv") => {
-                Self::extract_from_csv(&attachment.content)
+                Self::extract_from_xsense_csv(&attachment.content, &sensor_name)
             }
             name if name.ends_with(".json") => {
                 Self::extract_from_json(&attachment.content)
@@ -43,8 +47,103 @@ impl TemperatureExtractor {
         }
     }
     
+    fn extract_sensor_name(filename: &str) -> Result<String> {
+        // Format attendu: "Thermo-{sensor_name}_Exporter les données_{date}.csv"
+        // Exemples: "Thermo-cabane_...", "Thermo-patio_...", "Thermo-poolhouse_..."
+        
+        if let Some(captures) = Regex::new(r"Thermo-([^_]+)_")?.captures(filename) {
+            if let Some(sensor_match) = captures.get(1) {
+                return Ok(sensor_match.as_str().to_string());
+            }
+        }
+        
+        // Fallback: utiliser le nom complet du fichier sans extension
+        let name = filename
+            .split('.')
+            .next()
+            .unwrap_or(filename);
+        
+        Ok(name.to_string())
+    }
+    
+    fn extract_from_xsense_csv(content: &[u8], sensor_name: &str) -> Result<Vec<TemperatureReading>> {
+        debug!("Extraction depuis fichier CSV X-Sense pour le sensor: {}", sensor_name);
+        
+        // Essayer d'abord UTF-8, puis d'autres encodages
+        let content_str = match std::str::from_utf8(content) {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                // Fallback: remplacer les caractères invalides par des placeholders
+                String::from_utf8_lossy(content).to_string()
+            }
+        };
+        
+        debug!("Taille du contenu CSV: {} caractères", content_str.len());
+        
+        let mut readings = Vec::new();
+        let mut rdr = ReaderBuilder::new()
+            .has_headers(true)
+            .flexible(true)  // Tolérant aux différences de colonnes
+            .from_reader(content_str.as_bytes());
+        
+        // Vérifier les headers attendus
+        let headers = rdr.headers()
+            .context("Impossible de lire les headers CSV")?;
+        debug!("Headers CSV trouvés: {:?}", headers);
+        
+        // Valider qu'on a au moins 3 colonnes
+        if headers.len() < 3 {
+            return Err(anyhow::anyhow!("CSV invalide: trouvé {} colonnes, attendu au moins 3", headers.len()));
+        }
+        
+        // Parser chaque ligne de données
+        for (line_num, result) in rdr.records().enumerate() {
+            let record = result.context(format!("Erreur ligne {}", line_num + 2))?;
+            
+            if record.len() < 3 {
+                warn!("Ligne {} ignorée: pas assez de colonnes ({} < 3)", line_num + 2, record.len());
+                continue;
+            }
+            
+            // Colonne 1: Timestamp (format: "2023/12/26 23:59")
+            let timestamp_str = record.get(0).unwrap_or("");
+            let timestamp = Self::parse_xsense_timestamp(timestamp_str)
+                .with_context(|| format!("Impossible de parser le timestamp '{}' ligne {}", timestamp_str, line_num + 2))?;
+            
+            // Colonne 2: Température (format: "5.5")
+            let temperature_str = record.get(1).unwrap_or("");
+            let temperature: f64 = temperature_str.parse()
+                .with_context(|| format!("Impossible de parser la température '{}' ligne {}", temperature_str, line_num + 2))?;
+            
+            // Colonne 3: Humidité (format: "89.6")
+            let humidity_str = record.get(2).unwrap_or("");
+            let humidity: f64 = humidity_str.parse()
+                .with_context(|| format!("Impossible de parser l'humidité '{}' ligne {}", humidity_str, line_num + 2))?;
+            
+            readings.push(TemperatureReading {
+                sensor_id: sensor_name.to_string(),
+                timestamp,
+                temperature,
+                humidity: Some(humidity),
+                location: Some(sensor_name.to_string()),
+            });
+        }
+        
+        info!("Extraction terminée: {} lectures de température pour le sensor '{}'", readings.len(), sensor_name);
+        Ok(readings)
+    }
+    
+    fn parse_xsense_timestamp(timestamp_str: &str) -> Result<DateTime<Utc>> {
+        // Format X-Sense: "2023/12/26 23:59"
+        let naive_dt = NaiveDateTime::parse_from_str(timestamp_str, "%Y/%m/%d %H:%M")
+            .context(format!("Format timestamp invalide: '{}'", timestamp_str))?;
+        
+        // Convertir en UTC (on suppose que les données sont en heure locale)
+        Ok(DateTime::from_naive_utc_and_offset(naive_dt, Utc))
+    }
+    
     fn extract_from_csv(content: &[u8]) -> Result<Vec<TemperatureReading>> {
-        debug!("Extraction depuis fichier CSV");
+        debug!("Extraction depuis fichier CSV générique");
         
         let content_str = std::str::from_utf8(content)
             .context("Impossible de décoder le contenu CSV en UTF-8")?;
