@@ -2,7 +2,8 @@ use anyhow::{Result, Context};
 use imap::Session;
 use native_tls::{TlsConnector, TlsStream};
 use std::net::TcpStream;
-use log::{info, debug};
+use log::{info, debug, warn};
+use chrono::{DateTime, Utc};
 
 use crate::config::ImapConfig;
 
@@ -72,6 +73,46 @@ impl ImapClient {
         }
         
         anyhow::bail!("Email introuvable ou vide pour l'ID: {}", message_id);
+    }
+    
+    pub fn fetch_email_date(&mut self, message_id: u32) -> Result<chrono::DateTime<chrono::Utc>> {
+        debug!("Récupération de la date de l'email ID: {}", message_id);
+        
+        let messages = self.session
+            .fetch(message_id.to_string(), "ENVELOPE")
+            .context("Impossible de récupérer l'envelope de l'email")?;
+        
+        if let Some(message) = messages.iter().next() {
+            if let Some(envelope) = message.envelope() {
+                if let Some(date_bytes) = &envelope.date {
+                    let date_str = String::from_utf8_lossy(date_bytes);
+                    debug!("Date brute de l'email: {}", date_str);
+                    
+                    // Essayer de parser la date RFC 2822 de l'email
+                    if let Ok(parsed_date) = chrono::DateTime::parse_from_rfc2822(&date_str) {
+                        return Ok(parsed_date.with_timezone(&chrono::Utc));
+                    }
+                    
+                    // Fallback : essayer d'autres formats de date communs
+                    let fallback_formats = [
+                        "%a, %d %b %Y %H:%M:%S %z",
+                        "%d %b %Y %H:%M:%S %z",
+                        "%Y-%m-%d %H:%M:%S %z",
+                    ];
+                    
+                    for format in &fallback_formats {
+                        if let Ok(parsed_date) = chrono::DateTime::parse_from_str(&date_str, format) {
+                            return Ok(parsed_date.with_timezone(&chrono::Utc));
+                        }
+                    }
+                    
+                    warn!("Impossible de parser la date de l'email '{}', utilisation de la date actuelle", date_str);
+                }
+            }
+        }
+        
+        // Fallback : utiliser la date actuelle si impossible de récupérer la date de l'email
+        Ok(chrono::Utc::now())
     }
     
     pub fn fetch_email_headers(&mut self, message_id: u32) -> Result<String> {

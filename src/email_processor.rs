@@ -156,7 +156,14 @@ impl EmailProcessor {
         println!("{}", headers);
         println!();
         
-        // 2. Récupérer le contenu de l'email
+        // 2. Récupérer la date de l'email
+        let email_date = imap_client.fetch_email_date(message_id)
+            .context("Impossible de récupérer la date de l'email")?;
+        
+        println!("📅 Date de l'email: {}", email_date.format("%Y-%m-%d %H:%M:%S UTC"));
+        println!();
+        
+        // 3. Récupérer le contenu de l'email
         let email_content = imap_client.fetch_email(message_id)
             .context("Impossible de récupérer l'email")?;
         
@@ -200,7 +207,7 @@ impl EmailProcessor {
                 AttachmentParser::display_attachment_info(&attachment);
                 
                 // Sauvegarder dans le répertoire data
-                match AttachmentParser::save_attachment_to_data_dir(&attachment, &self.config.data_dir) {
+                match AttachmentParser::save_attachment_to_data_dir_with_date(&attachment, &self.config.data_dir, Some(email_date)) {
                     Ok(path) => {
                         println!("💾 Sauvegardé dans: {:?}", path);
                     }
