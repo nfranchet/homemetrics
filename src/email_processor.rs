@@ -54,6 +54,13 @@ impl EmailProcessor {
         let mut imap_client = ImapClient::new(&self.config.imap).await
             .context("Impossible de se connecter au serveur IMAP")?;
         
+        // 1.5. Créer le répertoire de destination s'il n'existe pas
+        let target_folder = "homemetrics/xsense";
+        if !is_dry_run {
+            imap_client.ensure_folder_exists(target_folder)
+                .context("Impossible de créer le répertoire de destination")?;
+        }
+        
         // 2. Rechercher les emails de support@x-sense.com
         let message_ids = imap_client.search_xsense_emails()
             .context("Erreur lors de la recherche d'emails")?;
@@ -98,6 +105,18 @@ impl EmailProcessor {
                     } else {
                         info!("Email {} traité avec succès: {} lectures sauvegardées", 
                               message_id, readings_count);
+                        
+                        // Déplacer l'email vers le répertoire de traitement
+                        match imap_client.move_email_to_folder(*message_id, target_folder) {
+                            Ok(_) => {
+                                info!("Email {} déplacé vers {}", message_id, target_folder);
+                            }
+                            Err(e) => {
+                                error!("Impossible de déplacer l'email {} vers {}: {}", 
+                                       message_id, target_folder, e);
+                                // Continuer quand même le traitement
+                            }
+                        }
                     }
                 }
                 Err(e) => {

@@ -143,7 +143,49 @@ impl ImapClient {
         None
     }
     
-
+    /// Crée le répertoire cible s'il n'existe pas
+    pub fn ensure_folder_exists(&mut self, folder_name: &str) -> Result<()> {
+        debug!("Vérification de l'existence du répertoire: {}", folder_name);
+        
+        // Lister les mailboxes pour vérifier si le dossier existe
+        let mailboxes = self.session.list(None, Some(folder_name))
+            .context("Impossible de lister les mailboxes")?;
+        
+        if mailboxes.is_empty() {
+            info!("Création du répertoire IMAP: {}", folder_name);
+            self.session.create(folder_name)
+                .context(format!("Impossible de créer le répertoire {}", folder_name))?;
+            info!("✅ Répertoire créé: {}", folder_name);
+        } else {
+            debug!("Répertoire existant: {}", folder_name);
+        }
+        
+        Ok(())
+    }
+    
+    /// Déplace un email vers un répertoire spécifique
+    pub fn move_email_to_folder(&mut self, message_id: u32, target_folder: &str) -> Result<()> {
+        info!("Déplacement de l'email {} vers {}", message_id, target_folder);
+        
+        // S'assurer que nous sommes dans INBOX
+        self.session.select("INBOX")
+            .context("Impossible de sélectionner INBOX")?;
+        
+        // Copier l'email vers le dossier cible
+        self.session.copy(&message_id.to_string(), target_folder)
+            .context(format!("Impossible de copier l'email vers {}", target_folder))?;
+        
+        // Marquer l'email comme supprimé dans INBOX
+        self.session.store(format!("{}", message_id), "+FLAGS (\\Deleted)")
+            .context("Impossible de marquer l'email comme supprimé")?;
+        
+        // Expunge pour supprimer définitivement les emails marqués
+        //self.session.expunge()
+        //    .context("Impossible d'expunge les emails supprimés")?;
+        
+        info!("✅ Email {} déplacé vers {}", message_id, target_folder);
+        Ok(())
+    }
     
     pub fn logout(mut self) -> Result<()> {
         info!("Déconnexion du serveur IMAP");

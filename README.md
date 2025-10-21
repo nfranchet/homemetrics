@@ -9,6 +9,9 @@ Ce projet Rust automatise la récupération et le traitement des données de tem
 - 🌡️ **Traitement des données** : Extrait les mesures de température et d'humidité
 - 🗄️ **Base de données TimescaleDB** : Stockage optimisé pour les séries temporelles
 - 🔍 **Filtrage intelligent** : Ne traite que les emails avec titre "Votre exportation de"
+- 📁 **Archivage automatique** : Déplace les emails traités vers `/homemetrics/xsense`
+- 🔄 **Mode daemon** : Exécution planifiée automatique à des horaires configurables
+- ⏰ **Scheduling flexible** : Définissez plusieurs horaires quotidiens de récupération
 
 ## Prérequis
 
@@ -60,6 +63,9 @@ cargo build --release
 | `DB_NAME` | Nom de la base de données | `homemetrics` |
 | `DB_USERNAME` | Utilisateur PostgreSQL | `postgres` |
 | `DB_PASSWORD` | Mot de passe PostgreSQL | `password` |
+| `SCHEDULER_ENABLED` | Activer le mode daemon | `true` ou `false` |
+| `SCHEDULER_TIMES` | Horaires de récupération | `02:00,14:00` |
+| `DATA_DIR` | Répertoire de sauvegarde | `./data` |
 
 ### Configuration Gmail
 
@@ -98,6 +104,58 @@ cargo run -- --dry-run --data-dir ./exports
 
 # Mode production (avec base de données)
 cargo run
+```
+
+## Mode Daemon 🔄
+
+Le mode daemon permet d'exécuter le programme en continu avec récupération planifiée des emails.
+
+### Configuration du Scheduler
+
+Ajoutez ces variables dans votre fichier `.env` :
+
+```bash
+# Activer le mode daemon
+SCHEDULER_ENABLED=true
+
+# Horaires de récupération (format HH:MM, séparés par des virgules)
+# Exemple: récupération à 2h du matin et 14h
+SCHEDULER_TIMES=02:00,14:00
+```
+
+### Utilisation
+
+```bash
+# Lancer en mode daemon
+cargo run -- --daemon
+
+# Mode daemon avec dry-run (analyse seulement, pas de sauvegarde DB)
+cargo run -- --daemon --dry-run
+
+# Mode daemon avec limite d'emails
+cargo run -- --daemon --limit 10
+```
+
+### Fonctionnement
+
+- ✅ Le programme tourne en continu
+- ✅ Récupération automatique aux horaires configurés
+- ✅ Chaque email traité est déplacé vers `/homemetrics/xsense`
+- ✅ Les emails restent dans ce dossier et ne sont plus retraités
+- ✅ Log périodique toutes les heures pour confirmer que le daemon est actif
+- ✅ Arrêt propre avec Ctrl+C
+
+### Archivage des Emails
+
+Après traitement, les emails sont automatiquement :
+1. Copiés vers le répertoire IMAP `/homemetrics/xsense`
+2. Supprimés de la boîte de réception (INBOX)
+
+Le répertoire `/homemetrics/xsense` est créé automatiquement s'il n'existe pas.
+
+**Note** : En mode dry-run, les emails ne sont PAS déplacés (analyse seulement).
+
+```
 
 # Aide sur les options
 cargo run -- --help
@@ -207,15 +265,77 @@ CREATE TABLE temperature_readings (
 );
 ```
 
+## Déploiement en Production
+
+### Installation avec Systemd
+
+Le projet inclut un script de déploiement automatique pour installer le service en mode daemon :
+
+```bash
+# Exécuter le script de déploiement (en tant que root)
+sudo ./deploy_daemon.sh
+```
+
+Ce script va :
+1. Créer un utilisateur système `homemetrics`
+2. Installer le binaire dans `/opt/homemetrics`
+3. Créer le répertoire de données
+4. Copier le fichier `.env.example` si nécessaire
+5. Installer le service systemd
+
+### Configuration du Service
+
+Après l'installation, éditez la configuration :
+
+```bash
+# Éditer le fichier de configuration
+sudo nano /opt/homemetrics/.env
+
+# Assurez-vous d'activer le scheduler
+SCHEDULER_ENABLED=true
+SCHEDULER_TIMES=02:00,14:00
+```
+
+### Gestion du Service
+
+```bash
+# Démarrer le service
+sudo systemctl start homemetrics
+
+# Activer au démarrage
+sudo systemctl enable homemetrics
+
+# Voir le statut
+sudo systemctl status homemetrics
+
+# Voir les logs en temps réel
+sudo journalctl -u homemetrics -f
+
+# Redémarrer après modification de la configuration
+sudo systemctl restart homemetrics
+
+# Arrêter le service
+sudo systemctl stop homemetrics
+```
+
+### Mise à jour
+
+```bash
+# Recompiler et redéployer
+cargo build --release
+sudo cp target/release/homemetrics /opt/homemetrics/
+sudo systemctl restart homemetrics
+```
+
 ## Développement
 
 ### Structure du projet
 
 ```
 src/
-├── main.rs              # Point d'entrée
-├── config.rs            # Configuration
-├── imap_client.rs       # Client IMAP
+├── main.rs              # Point d'entrée + mode daemon
+├── config.rs            # Configuration + scheduler
+├── imap_client.rs       # Client IMAP + archivage
 ├── attachment_parser.rs # Extraction pièces jointes
 ├── temperature_extractor.rs # Parsing données température
 ├── database.rs          # Interface TimescaleDB
