@@ -27,6 +27,9 @@ tokio-postgres = "0.7"
 # Gestion des dates et heures
 chrono = { version = "0.4", features = ["serde"] }
 
+# Scheduler pour le mode daemon
+tokio-cron-scheduler = "0.11"
+
 # Gestion des erreurs
 anyhow = "1.0"
 thiserror = "1.0"

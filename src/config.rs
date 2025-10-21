@@ -1,14 +1,21 @@
 use anyhow::Result;
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     pub imap: ImapConfig,
     pub database: DatabaseConfig,
     pub data_dir: String,
+    pub scheduler: SchedulerConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
+pub struct SchedulerConfig {
+    pub enabled: bool,
+    pub schedule_times: Vec<String>, // Format: "HH:MM" (e.g., ["02:00", "14:00"])
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct ImapConfig {
     pub server: String,
     pub port: u16,
@@ -16,7 +23,7 @@ pub struct ImapConfig {
     pub password: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct DatabaseConfig {
     pub host: String,
     pub port: u16,
@@ -60,6 +67,17 @@ impl Config {
             },
             data_dir: std::env::var("DATA_DIR")
                 .unwrap_or_else(|_| "./data".to_string()),
+            scheduler: SchedulerConfig {
+                enabled: std::env::var("SCHEDULER_ENABLED")
+                    .unwrap_or_else(|_| "false".to_string())
+                    .parse()
+                    .unwrap_or(false),
+                schedule_times: std::env::var("SCHEDULER_TIMES")
+                    .unwrap_or_else(|_| "02:00".to_string())
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .collect(),
+            },
         })
     }
     
