@@ -24,3 +24,8 @@ Thumbs.db
 *.tmp
 *.temp
 data/*
+
+
+# Not needed anymore
+deploy_daemon.sh
+homemetrics.service
