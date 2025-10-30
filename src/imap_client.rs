@@ -60,10 +60,9 @@ impl ImapClient {
             .context("Impossible de sélectionner INBOX")?;
         
         // Construire les critères de recherche de manière structurée
-        // Rechercher les emails de l'expéditeur spécifique avec l'expediteur requis
-        let search_criteria = "FROM \"support@x-sense.com\"";
-        
-        // TOOD refine with subject criteria when we read messages
+        // Note: Gmail peut interpréter FROM de manière large (incluant Reply-To, Sender, etc.)
+        // Nous filtrons ensuite par le sujet pour être plus précis
+        let search_criteria = "FROM support@x-sense.com SUBJECT \"Votre exportation de\"";
 
         debug!("Critères de recherche: {}", search_criteria);
         
@@ -73,9 +72,95 @@ impl ImapClient {
             .context("Erreur lors de la recherche d'emails")?;
         
         let ids_vec: Vec<u32> = message_ids.into_iter().collect();
-        info!("Trouvé {} email(s) correspondant aux critères", ids_vec.len());
+        info!("Trouvé {} email(s) correspondant aux critères IMAP", ids_vec.len());
+        
+        // Debug: vérifier quelques emails pour voir ce qui est retourné
+        if !ids_vec.is_empty() {
+            let sample_count = std::cmp::min(3, ids_vec.len());
+            debug!("Vérification des {} premiers emails trouvés:", sample_count);
+            
+            for &msg_id in ids_vec.iter().take(sample_count) {
+                if let Ok(email_info) = self.fetch_email_complete(msg_id).await {
+                    debug!("  Email {}: De='{}', Objet='{}'", 
+                           msg_id, 
+                           email_info.headers.lines().next().unwrap_or("?"),
+                           email_info.subject);
+                }
+            }
+        }
+        
+        // Filtrage supplémentaire côté client pour s'assurer qu'on a les bons emails
+        // En mode debug uniquement pour vérifier, sinon on fait confiance à la recherche IMAP
+        if log::log_enabled!(log::Level::Debug) {
+            debug!("Mode debug: vérification de tous les expéditeurs...");
+            let mut verified_count = 0;
+            let mut incorrect_count = 0;
+            
+            // Vérifier un échantillon d'emails
+            let sample_size = std::cmp::min(10, ids_vec.len());
+            
+            for &msg_id in ids_vec.iter().take(sample_size) {
+                match self.verify_email_sender(msg_id, "support@x-sense.com").await {
+                    Ok(true) => verified_count += 1,
+                    Ok(false) => {
+                        incorrect_count += 1;
+                        warn!("⚠️  Email {} a un expéditeur incorrect!", msg_id);
+                    }
+                    Err(e) => {
+                        warn!("Impossible de vérifier l'email {}: {}", msg_id, e);
+                    }
+                }
+            }
+            
+            debug!("Vérification échantillon: {}/{} corrects, {} incorrects", 
+                   verified_count, sample_size, incorrect_count);
+            
+            if incorrect_count > 0 {
+                warn!("⚠️  {} emails avec expéditeur incorrect détectés sur l'échantillon de {}", 
+                      incorrect_count, sample_size);
+            }
+        }
         
         Ok(ids_vec)
+    }
+    
+    /// Vérifie rapidement si un email provient bien de l'expéditeur spécifié
+    async fn verify_email_sender(&mut self, message_id: u32, expected_sender: &str) -> Result<bool> {
+        // Récupérer uniquement l'envelope (plus rapide que RFC822 complet)
+        let messages_stream = self.session
+            .fetch(message_id.to_string(), "ENVELOPE")
+            .await
+            .context("Impossible de récupérer l'envelope")?;
+        
+        let messages: Vec<_> = messages_stream
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .filter_map(|r| r.ok())
+            .collect();
+        
+        if let Some(message) = messages.first() {
+            if let Some(envelope) = message.envelope() {
+                if let Some(from_addresses) = envelope.from.as_ref() {
+                    for addr in from_addresses {
+                        let mailbox = addr.mailbox.as_ref()
+                            .map(|m| String::from_utf8_lossy(m).to_string())
+                            .unwrap_or_default();
+                        let host = addr.host.as_ref()
+                            .map(|h| String::from_utf8_lossy(h).to_string())
+                            .unwrap_or_default();
+                        
+                        let email = format!("{}@{}", mailbox, host);
+                        
+                        if email.to_lowercase() == expected_sender.to_lowercase() {
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(false)
     }
     
     pub async fn fetch_email_complete(&mut self, message_id: u32) -> Result<EmailInfo> {
