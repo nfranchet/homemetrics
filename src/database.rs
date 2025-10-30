@@ -36,7 +36,7 @@ impl Database {
         info!("Vérification/création des tables de base de données");
         
         // Essayer de créer l'extension TimescaleDB si disponible
-        let timescaledb_available = match sqlx::query("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
+        let _timescaledb_available = match sqlx::query("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
             .execute(&self.pool)
             .await {
                 Ok(_) => {

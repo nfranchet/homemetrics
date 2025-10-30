@@ -1,37 +1,49 @@
 use anyhow::{Result, Context};
-use imap::Session;
-use native_tls::{TlsConnector, TlsStream};
-use std::net::TcpStream;
+use async_imap::Session;
+use async_native_tls::{TlsConnector, TlsStream};
+use tokio::net::TcpStream;
+use tokio_util::compat::TokioAsyncReadCompatExt;
+use futures::stream::StreamExt;
 use log::{info, debug, warn};
 
 use crate::config::ImapConfig;
 
 pub struct EmailInfo {
+    pub subject: String,
     pub content: Vec<u8>,
     pub date: chrono::DateTime<chrono::Utc>,
     pub headers: String,
 }
 
 pub struct ImapClient {
-    session: Session<TlsStream<TcpStream>>,
+    session: Session<TlsStream<tokio_util::compat::Compat<TcpStream>>>,
 }
 
 impl ImapClient {
     pub async fn new(config: &ImapConfig) -> Result<Self> {
         info!("Connexion au serveur IMAP {}:{}", config.server, config.port);
         
-        // Créer une connexion TLS
-        let tls = TlsConnector::builder()
-            .build()
-            .context("Impossible de créer le connecteur TLS")?;
-        
-        // Se connecter au serveur IMAP
-        let client = imap::connect((config.server.as_str(), config.port), config.server.as_str(), &tls)
+        // Créer une connexion TCP
+        let tcp_stream = TcpStream::connect((config.server.as_str(), config.port))
+            .await
             .context("Impossible de se connecter au serveur IMAP")?;
+        
+        // Wrapper pour compatibilité futures
+        let tcp_stream_compat = tcp_stream.compat();
+        
+        // Créer une connexion TLS
+        let tls = TlsConnector::new();
+        let tls_stream = tls.connect(&config.server, tcp_stream_compat)
+            .await
+            .context("Impossible d'établir la connexion TLS")?;
+        
+        // Créer le client IMAP avec async-imap
+        let client = async_imap::Client::new(tls_stream);
         
         // Authentification
         let session = client
             .login(&config.username, &config.password)
+            .await
             .map_err(|e| anyhow::anyhow!("Erreur d'authentification IMAP: {:?}", e.0))?;
         
         info!("Connexion IMAP établie avec succès");
@@ -39,22 +51,25 @@ impl ImapClient {
         Ok(ImapClient { session })
     }
     
-    pub fn search_xsense_emails(&mut self) -> Result<Vec<u32>> {
-        info!("Recherche des emails de support@x-sense.com avec titre 'Votre exportation de'");
+    pub async fn search_xsense_emails(&mut self) -> Result<Vec<u32>> {
+        info!("Recherche des emails de support@x-sense.com avec titre 'X-Sense'");
         
         // Sélectionner la boîte aux lettres
         self.session.select("INBOX")
+            .await
             .context("Impossible de sélectionner INBOX")?;
         
-        // Rechercher les emails de l'expéditeur spécifique avec le titre requis
-        let search_criteria = format!(
-            "FROM \"support@x-sense.com\" SUBJECT \"Votre exportation de\""
-        );
+        // Construire les critères de recherche de manière structurée
+        // Rechercher les emails de l'expéditeur spécifique avec l'expediteur requis
+        let search_criteria = "FROM \"support@x-sense.com\"";
         
+        // TOOD refine with subject criteria when we read messages
+
         debug!("Critères de recherche: {}", search_criteria);
         
         let message_ids = self.session
             .search(&search_criteria)
+            .await
             .context("Erreur lors de la recherche d'emails")?;
         
         let ids_vec: Vec<u32> = message_ids.into_iter().collect();
@@ -63,15 +78,24 @@ impl ImapClient {
         Ok(ids_vec)
     }
     
-    pub fn fetch_email_complete(&mut self, message_id: u32) -> Result<EmailInfo> {
+    pub async fn fetch_email_complete(&mut self, message_id: u32) -> Result<EmailInfo> {
         debug!("Récupération complète de l'email ID: {}", message_id);
         
         // Un seul fetch pour récupérer tout le contenu de l'email
-        let messages = self.session
+        let messages_stream = self.session
             .fetch(message_id.to_string(), "RFC822")
+            .await
             .context("Impossible de récupérer l'email")?;
         
-        if let Some(message) = messages.iter().next() {
+        // Collecter le stream en vec
+        let messages: Vec<_> = messages_stream
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .filter_map(|r| r.ok())
+            .collect();
+        
+        if let Some(message) = messages.first() {
             if let Some(body) = message.body() {
                 debug!("Email récupéré, taille: {} bytes", body.len());
                 
@@ -106,6 +130,7 @@ impl ImapClient {
                         let headers = format!("De: {}\nObjet: {}", from, subject);
                         
                         return Ok(EmailInfo {
+                            subject: subject.to_string(),
                             content: body.to_vec(),
                             date: email_date,
                             headers,
@@ -116,6 +141,7 @@ impl ImapClient {
                 // Fallback : utiliser l'ancienne méthode si le parsing échoue
                 warn!("Impossible de parser l'email avec mail-parser, utilisation du fallback");
                 return Ok(EmailInfo {
+                    subject: "Objet inconnu".to_string(),
                     content: body.to_vec(),
                     date: chrono::Utc::now(),
                     headers: "Headers non disponibles".to_string(),
@@ -144,16 +170,26 @@ impl ImapClient {
     }
     
     /// Crée le répertoire cible s'il n'existe pas
-    pub fn ensure_folder_exists(&mut self, folder_name: &str) -> Result<()> {
+    pub async fn ensure_folder_exists(&mut self, folder_name: &str) -> Result<()> {
         debug!("Vérification de l'existence du répertoire: {}", folder_name);
         
         // Lister les mailboxes pour vérifier si le dossier existe
-        let mailboxes = self.session.list(None, Some(folder_name))
+        let mailboxes_stream = self.session.list(None, Some(folder_name))
+            .await
             .context("Impossible de lister les mailboxes")?;
+        
+        // Collecter le stream en vec
+        let mailboxes: Vec<_> = mailboxes_stream
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .filter_map(|r| r.ok())
+            .collect();
         
         if mailboxes.is_empty() {
             info!("Création du répertoire IMAP: {}", folder_name);
             self.session.create(folder_name)
+                .await
                 .context(format!("Impossible de créer le répertoire {}", folder_name))?;
             info!("✅ Répertoire créé: {}", folder_name);
         } else {
@@ -164,32 +200,40 @@ impl ImapClient {
     }
     
     /// Déplace un email vers un répertoire spécifique
-    pub fn move_email_to_folder(&mut self, message_id: u32, target_folder: &str) -> Result<()> {
+    pub async fn move_email_to_folder(&mut self, message_id: u32, target_folder: &str) -> Result<()> {
         info!("Déplacement de l'email {} vers {}", message_id, target_folder);
         
         // S'assurer que nous sommes dans INBOX
         self.session.select("INBOX")
+            .await
             .context("Impossible de sélectionner INBOX")?;
         
         // Copier l'email vers le dossier cible
         self.session.copy(&message_id.to_string(), target_folder)
+            .await
             .context(format!("Impossible de copier l'email vers {}", target_folder))?;
         
         // Marquer l'email comme supprimé dans INBOX
-        self.session.store(format!("{}", message_id), "+FLAGS (\\Deleted)")
+        let store_stream = self.session.store(format!("{}", message_id), "+FLAGS (\\Deleted)")
+            .await
             .context("Impossible de marquer l'email comme supprimé")?;
+        
+        // Consommer le stream (nécessaire pour que l'opération soit effectuée)
+        let _store_results: Vec<_> = store_stream.collect::<Vec<_>>().await;
         
         // Expunge pour supprimer définitivement les emails marqués
         //self.session.expunge()
+        //    .await
         //    .context("Impossible d'expunge les emails supprimés")?;
         
         info!("✅ Email {} déplacé vers {}", message_id, target_folder);
         Ok(())
     }
     
-    pub fn logout(mut self) -> Result<()> {
+    pub async fn logout(mut self) -> Result<()> {
         info!("Déconnexion du serveur IMAP");
         self.session.logout()
+            .await
             .context("Erreur lors de la déconnexion IMAP")?;
         Ok(())
     }
