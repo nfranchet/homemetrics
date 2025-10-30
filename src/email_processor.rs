@@ -58,11 +58,13 @@ impl EmailProcessor {
         let target_folder = "homemetrics/xsense";
         if !is_dry_run {
             imap_client.ensure_folder_exists(target_folder)
+                .await
                 .context("Impossible de créer le répertoire de destination")?;
         }
         
         // 2. Rechercher les emails de support@x-sense.com
         let message_ids = imap_client.search_xsense_emails()
+            .await
             .context("Erreur lors de la recherche d'emails")?;
         
         if message_ids.is_empty() {
@@ -95,28 +97,28 @@ impl EmailProcessor {
                 println!("{}", "-".repeat(60));
             }
             
-            match self.process_single_email_common(&mut imap_client, *message_id, is_dry_run).await {
+            let folder = if is_dry_run { None } else { Some(target_folder) };
+            
+            match self.process_single_email_common(&mut imap_client, *message_id, is_dry_run, folder).await {
                 Ok(readings_count) => {
                     total_processed += 1;
+                    if readings_count == 0 {
+                        // Cas spécial : email ignoré (sujet inattendu ou pas de pièces jointes)
+                        if is_dry_run {
+                            println!("✅ Email {} analysé sans succès\n", message_id);
+                        } else {
+                            info!("Email {} traité sans succès", message_id);
+                        }
+                        continue; // Skip moving email if no readings were processed
+                    }
                     total_readings_saved += readings_count;
                     
+
                     if is_dry_run {
                         println!("✅ Email {} analysé avec succès\n", message_id);
                     } else {
                         info!("Email {} traité avec succès: {} lectures sauvegardées", 
                               message_id, readings_count);
-                        
-                        // Déplacer l'email vers le répertoire de traitement
-                        match imap_client.move_email_to_folder(*message_id, target_folder) {
-                            Ok(_) => {
-                                info!("Email {} déplacé vers {}", message_id, target_folder);
-                            }
-                            Err(e) => {
-                                error!("Impossible de déplacer l'email {} vers {}: {}", 
-                                       message_id, target_folder, e);
-                                // Continuer quand même le traitement
-                            }
-                        }
                     }
                 }
                 Err(e) => {
@@ -131,6 +133,7 @@ impl EmailProcessor {
         
         // 4. Se déconnecter proprement
         imap_client.logout()
+            .await
             .context("Erreur lors de la déconnexion IMAP")?;
         
         if is_dry_run {
@@ -152,6 +155,7 @@ impl EmailProcessor {
         imap_client: &mut ImapClient,
         message_id: u32,
         is_dry_run: bool,
+        target_folder: Option<&str>,
     ) -> Result<usize> {
         if is_dry_run {
             debug!("Analyse de l'email ID: {}", message_id);
@@ -161,6 +165,7 @@ impl EmailProcessor {
         
         // 1. Récupérer toutes les informations de l'email en un seul appel
         let email_info = imap_client.fetch_email_complete(message_id)
+            .await
             .context("Impossible de récupérer l'email complet")?;
         
         // 2. En mode dry-run, afficher les headers et la date
@@ -171,10 +176,6 @@ impl EmailProcessor {
             
             println!("📅 Date de l'email: {}", email_info.date.format("%Y-%m-%d %H:%M:%S UTC"));
             println!();
-        }
-        
-        // 4. En mode dry-run, afficher des informations sur l'email
-        if is_dry_run {
             println!("📄 Contenu de l'email:");
             println!("   Taille: {} bytes", email_info.content.len());
             
@@ -199,7 +200,17 @@ impl EmailProcessor {
             }
             println!();
         }
-        
+
+        // Check email subject for expected pattern
+        if !email_info.subject.starts_with("Votre exportation de") {
+            if is_dry_run {
+                println!("❌ Sujet inattendu: '{}'", email_info.subject);
+            } else {
+                warn!("Sujet inattendu pour l'email {}: '{}'", message_id, email_info.subject);
+            }
+            return Ok(0);
+        }
+
         // 5. Extraire les pièces jointes
         let attachments = AttachmentParser::parse_email(&email_info.content)
             .context("Erreur lors de l'extraction des pièces jointes")?;
@@ -247,6 +258,22 @@ impl EmailProcessor {
                         error!("Erreur lors du traitement de la pièce jointe '{}': {}", 
                                attachment.filename, e);
                         // Continuer avec les autres pièces jointes
+                    }
+                }
+            }
+        }
+        
+        // 7. Déplacer l'email vers le répertoire de traitement (mode normal uniquement)
+        if let Some(folder) = target_folder {
+            if total_readings > 0 {
+                match imap_client.move_email_to_folder(message_id, folder).await {
+                    Ok(_) => {
+                        info!("Email {} déplacé vers {}", message_id, folder);
+                    }
+                    Err(e) => {
+                        error!("Impossible de déplacer l'email {} vers {}: {}", 
+                               message_id, folder, e);
+                        // Continuer quand même, l'erreur n'est pas fatale
                     }
                 }
             }
