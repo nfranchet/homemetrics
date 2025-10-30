@@ -7,6 +7,7 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub data_dir: String,
     pub scheduler: SchedulerConfig,
+    pub slack: Option<SlackConfig>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -30,6 +31,12 @@ pub struct DatabaseConfig {
     pub database: String,
     pub username: String,
     pub password: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct SlackConfig {
+    pub bot_token: String,
+    pub channel_id: String,
 }
 
 impl Config {
@@ -77,6 +84,16 @@ impl Config {
                     .split(',')
                     .map(|s| s.trim().to_string())
                     .collect(),
+            },
+            slack: match (std::env::var("SLACK_BOT_TOKEN"), std::env::var("SLACK_CHANNEL_ID")) {
+                (Ok(bot_token), Ok(channel_id)) => Some(SlackConfig {
+                    bot_token,
+                    channel_id,
+                }),
+                _ => {
+                    log::warn!("SLACK_BOT_TOKEN ou SLACK_CHANNEL_ID non défini - notifications Slack désactivées");
+                    None
+                }
             },
         })
     }
