@@ -8,6 +8,7 @@ mod attachment_parser;
 mod temperature_extractor;
 mod database;
 mod email_processor;
+mod slack_notifier;
 
 use config::Config;
 use email_processor::EmailProcessor;

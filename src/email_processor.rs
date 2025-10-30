@@ -6,10 +6,12 @@ use crate::imap_client::ImapClient;
 use crate::attachment_parser::{AttachmentParser, Attachment};
 use crate::temperature_extractor::TemperatureExtractor;
 use crate::database::Database;
+use crate::slack_notifier::SlackNotifier;
 
 pub struct EmailProcessor {
     config: Config,
     database: Option<Database>,
+    slack: Option<SlackNotifier>,
 }
 
 impl EmailProcessor {
@@ -20,9 +22,27 @@ impl EmailProcessor {
         let database = Database::new(&config.database).await
             .context("Impossible d'initialiser la base de données")?;
         
+        // Initialiser le notifieur Slack si configuré
+        let slack = if let Some(slack_config) = &config.slack {
+            match SlackNotifier::new(slack_config) {
+                Ok(notifier) => {
+                    info!("✅ Notifications Slack activées");
+                    Some(notifier)
+                },
+                Err(e) => {
+                    warn!("⚠️  Impossible d'initialiser le notifieur Slack: {} - notifications désactivées", e);
+                    None
+                }
+            }
+        } else {
+            info!("ℹ️  Notifications Slack non configurées");
+            None
+        };
+        
         Ok(EmailProcessor {
             config,
             database: Some(database),
+            slack,
         })
     }
     
@@ -32,6 +52,7 @@ impl EmailProcessor {
         Ok(EmailProcessor {
             config,
             database: None,
+            slack: None,  // Pas de notifications Slack en mode dry-run
         })
     }
     
@@ -54,25 +75,17 @@ impl EmailProcessor {
         let mut imap_client = ImapClient::new(&self.config.imap).await
             .context("Impossible de se connecter au serveur IMAP")?;
         
-        // 1.5. Créer le répertoire de destination s'il n'existe pas
-        let target_folder = "homemetrics/xsense";
-        if !is_dry_run {
-            imap_client.ensure_folder_exists(target_folder)
-                .await
-                .context("Impossible de créer le répertoire de destination")?;
-        }
-        
-        // 2. Rechercher les emails de support@x-sense.com
+        // 2. Rechercher les emails avec le label 'homemetrics-todo-xsense'
         let message_ids = imap_client.search_xsense_emails()
             .await
             .context("Erreur lors de la recherche d'emails")?;
         
         if message_ids.is_empty() {
             if is_dry_run {
-                println!("❌ Aucun email trouvé correspondant aux critères");
-                println!("   Critères: De 'support@x-sense.com' avec objet commençant par 'Votre exportation de'");
+                println!("❌ Aucun email trouvé avec le label 'homemetrics-todo-xsense'");
+                println!("   Astuce: Ajoutez le label 'homemetrics-todo-xsense' aux emails X-Sense à traiter");
             } else {
-                info!("Aucun email trouvé correspondant aux critères");
+                info!("Aucun email trouvé avec le label 'homemetrics-todo-xsense'");
             }
             return Ok(0);
         }
@@ -97,9 +110,7 @@ impl EmailProcessor {
                 println!("{}", "-".repeat(60));
             }
             
-            let folder = if is_dry_run { None } else { Some(target_folder) };
-            
-            match self.process_single_email_common(&mut imap_client, *message_id, is_dry_run, folder).await {
+            match self.process_single_email_common(&mut imap_client, *message_id, is_dry_run).await {
                 Ok(readings_count) => {
                     total_processed += 1;
                     if readings_count == 0 {
@@ -155,7 +166,6 @@ impl EmailProcessor {
         imap_client: &mut ImapClient,
         message_id: u32,
         is_dry_run: bool,
-        target_folder: Option<&str>,
     ) -> Result<usize> {
         if is_dry_run {
             debug!("Analyse de l'email ID: {}", message_id);
@@ -230,6 +240,7 @@ impl EmailProcessor {
         }
         
         let mut total_readings = 0;
+        let mut sensor_details: Vec<(String, usize)> = Vec::new();
         
         // 6. Traiter chaque pièce jointe
         for attachment in attachments {                            
@@ -249,10 +260,11 @@ impl EmailProcessor {
             } else {
                 // Mode normal : traitement complet avec base de données
                 match self.process_attachment(&attachment).await {
-                    Ok(readings_count) => {
+                    Ok((sensor_name, readings_count)) => {
                         total_readings += readings_count;
-                        info!("Pièce jointe '{}' traitée: {} lectures", 
-                              attachment.filename, readings_count);
+                        sensor_details.push((sensor_name.clone(), readings_count));
+                        info!("Pièce jointe '{}' traitée: {} lectures pour le sensor '{}'", 
+                              attachment.filename, readings_count, sensor_name);
                     }
                     Err(e) => {
                         error!("Erreur lors du traitement de la pièce jointe '{}': {}", 
@@ -263,17 +275,35 @@ impl EmailProcessor {
             }
         }
         
-        // 7. Déplacer l'email vers le répertoire de traitement (mode normal uniquement)
-        if let Some(folder) = target_folder {
-            if total_readings > 0 {
-                match imap_client.move_email_to_folder(message_id, folder).await {
+        // 7. Marquer l'email comme traité et envoyer notification Slack (mode normal uniquement)
+        if !is_dry_run && total_readings > 0 {
+            // 7a. Marquer avec le label
+            match imap_client.mark_email_as_processed(message_id).await {
+                Ok(_) => {
+                    info!("Email {} marqué comme traité", message_id);
+                }
+                Err(e) => {
+                    error!("Impossible de marquer l'email {} comme traité: {}", 
+                           message_id, e);
+                    // Continuer quand même, l'erreur n'est pas fatale
+                }
+            }
+            
+            // 7b. Envoyer notification Slack
+            if let Some(ref slack) = self.slack {
+                match slack.notify_email_processed(
+                    message_id,
+                    &email_info.subject,
+                    email_info.date,
+                    total_readings,
+                    sensor_details,
+                ).await {
                     Ok(_) => {
-                        info!("Email {} déplacé vers {}", message_id, folder);
+                        info!("✅ Notification Slack envoyée pour l'email {}", message_id);
                     }
                     Err(e) => {
-                        error!("Impossible de déplacer l'email {} vers {}: {}", 
-                               message_id, folder, e);
-                        // Continuer quand même, l'erreur n'est pas fatale
+                        error!("❌ Erreur lors de l'envoi de la notification Slack: {}", e);
+                        // Ne pas faire échouer le traitement si Slack échoue
                     }
                 }
             }
@@ -282,7 +312,7 @@ impl EmailProcessor {
         Ok(total_readings)
     }
     
-    async fn process_attachment(&self, attachment: &Attachment) -> Result<usize> {
+    async fn process_attachment(&self, attachment: &Attachment) -> Result<(String, usize)> {
         debug!("Traitement de la pièce jointe: {}", attachment.filename);
         
         // 1. Extraire les données de température de la pièce jointe
@@ -291,8 +321,13 @@ impl EmailProcessor {
         
         if temperature_readings.is_empty() {
             warn!("Aucune donnée de température trouvée dans '{}'", attachment.filename);
-            return Ok(0);
+            return Ok(("unknown".to_string(), 0));
         }
+        
+        // Extraire le nom du sensor depuis les lectures (toutes ont le même sensor_id)
+        let sensor_name = temperature_readings.first()
+            .map(|r| r.sensor_id.clone())
+            .unwrap_or_else(|| "unknown".to_string());
         
         // 2. Sauvegarder les lectures dans la base de données (si disponible)
         let saved_count = if let Some(ref database) = self.database {
@@ -304,10 +339,10 @@ impl EmailProcessor {
             0
         };
         
-        debug!("Pièce jointe '{}' terminée: {} lectures extraites, {} sauvegardées", 
-               attachment.filename, temperature_readings.len(), saved_count);
+        debug!("Pièce jointe '{}' terminée: {} lectures extraites, {} sauvegardées pour le sensor '{}'", 
+               attachment.filename, temperature_readings.len(), saved_count, sensor_name);
         
-        Ok(saved_count)
+        Ok((sensor_name, saved_count))
     }
     
     #[allow(dead_code)]

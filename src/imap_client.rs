@@ -52,74 +52,26 @@ impl ImapClient {
     }
     
     pub async fn search_xsense_emails(&mut self) -> Result<Vec<u32>> {
-        info!("Recherche des emails de support@x-sense.com avec titre 'X-Sense'");
+        info!("Recherche des emails avec le label 'homemetrics-todo-xsense'");
         
         // Sélectionner la boîte aux lettres
         self.session.select("INBOX")
             .await
             .context("Impossible de sélectionner INBOX")?;
         
-        // Construire les critères de recherche de manière structurée
-        // Note: Gmail peut interpréter FROM de manière large (incluant Reply-To, Sender, etc.)
-        // Nous filtrons ensuite par le sujet pour être plus précis
-        let search_criteria = "FROM support@x-sense.com SUBJECT \"Votre exportation de\"";
+        // Utiliser X-GM-RAW pour rechercher par label Gmail
+        // Format: X-GM-RAW "label:nom-du-label"
+        let search_criteria = "X-GM-RAW \"label:homemetrics-todo-xsense\"";
 
         debug!("Critères de recherche: {}", search_criteria);
         
         let message_ids = self.session
             .search(&search_criteria)
             .await
-            .context("Erreur lors de la recherche d'emails")?;
+            .context("Erreur lors de la recherche d'emails par label")?;
         
         let ids_vec: Vec<u32> = message_ids.into_iter().collect();
-        info!("Trouvé {} email(s) correspondant aux critères IMAP", ids_vec.len());
-        
-        // Debug: vérifier quelques emails pour voir ce qui est retourné
-        if !ids_vec.is_empty() {
-            let sample_count = std::cmp::min(3, ids_vec.len());
-            debug!("Vérification des {} premiers emails trouvés:", sample_count);
-            
-            for &msg_id in ids_vec.iter().take(sample_count) {
-                if let Ok(email_info) = self.fetch_email_complete(msg_id).await {
-                    debug!("  Email {}: De='{}', Objet='{}'", 
-                           msg_id, 
-                           email_info.headers.lines().next().unwrap_or("?"),
-                           email_info.subject);
-                }
-            }
-        }
-        
-        // Filtrage supplémentaire côté client pour s'assurer qu'on a les bons emails
-        // En mode debug uniquement pour vérifier, sinon on fait confiance à la recherche IMAP
-        if log::log_enabled!(log::Level::Debug) {
-            debug!("Mode debug: vérification de tous les expéditeurs...");
-            let mut verified_count = 0;
-            let mut incorrect_count = 0;
-            
-            // Vérifier un échantillon d'emails
-            let sample_size = std::cmp::min(10, ids_vec.len());
-            
-            for &msg_id in ids_vec.iter().take(sample_size) {
-                match self.verify_email_sender(msg_id, "support@x-sense.com").await {
-                    Ok(true) => verified_count += 1,
-                    Ok(false) => {
-                        incorrect_count += 1;
-                        warn!("⚠️  Email {} a un expéditeur incorrect!", msg_id);
-                    }
-                    Err(e) => {
-                        warn!("Impossible de vérifier l'email {}: {}", msg_id, e);
-                    }
-                }
-            }
-            
-            debug!("Vérification échantillon: {}/{} corrects, {} incorrects", 
-                   verified_count, sample_size, incorrect_count);
-            
-            if incorrect_count > 0 {
-                warn!("⚠️  {} emails avec expéditeur incorrect détectés sur l'échantillon de {}", 
-                      incorrect_count, sample_size);
-            }
-        }
+        info!("Trouvé {} email(s) avec le label 'homemetrics-todo-xsense'", ids_vec.len());
         
         Ok(ids_vec)
     }
@@ -312,6 +264,41 @@ impl ImapClient {
         //    .context("Impossible d'expunge les emails supprimés")?;
         
         info!("✅ Email {} déplacé vers {}", message_id, target_folder);
+        Ok(())
+    }
+    
+    /// Ajoute le label "done" et supprime tous les autres labels Gmail
+    /// Utilise X-GM-LABELS pour gérer les labels Gmail
+    pub async fn mark_email_as_processed(&mut self, message_id: u32) -> Result<()> {
+        info!("Marquage de l'email {} comme traité", message_id);
+        
+        // S'assurer que nous sommes dans INBOX
+        self.session.select("INBOX")
+            .await
+            .context("Impossible de sélectionner INBOX")?;
+        
+        // Étape 1: Supprimer TOUS les labels existants
+        // On utilise -X-GM-LABELS pour supprimer les labels
+        debug!("Suppression de tous les labels de l'email {}", message_id);
+        let store_stream = self.session
+            .store(format!("{}", message_id), "-X-GM-LABELS (\\All)")
+            .await
+            .context("Impossible de supprimer les labels")?;
+        
+        // Consommer le stream
+        let _results: Vec<_> = store_stream.collect::<Vec<_>>().await;
+        
+        // Étape 2: Ajouter uniquement le label "done"
+        debug!("Ajout du label 'homemetrics-done-xsense' à l'email {}", message_id);
+        let store_stream = self.session
+            .store(format!("{}", message_id), "+X-GM-LABELS (homemetrics-done-xsense)")
+            .await
+            .context("Impossible d'ajouter le label 'homemetrics-done-xsense'")?;
+        
+        // Consommer le stream
+        let _results: Vec<_> = store_stream.collect::<Vec<_>>().await;
+        
+        info!("✅ Email {} marqué comme traité avec le label 'homemetrics-done-xsense'", message_id);
         Ok(())
     }
     
