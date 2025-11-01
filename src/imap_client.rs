@@ -277,13 +277,12 @@ impl ImapClient {
             .await
             .context("Impossible de sélectionner INBOX")?;
         
-        // Étape 1: Supprimer TOUS les labels existants
-        // On utilise -X-GM-LABELS pour supprimer les labels
-        debug!("Suppression de tous les labels de l'email {}", message_id);
+        // Étape 1: Supprimer le label homemetrics-todo-xsense
+        debug!("Suppression du label 'homemetrics-todo-xsense' de l'email {}", message_id);
         let store_stream = self.session
-            .store(format!("{}", message_id), "-X-GM-LABELS (\\All)")
+            .store(format!("{}", message_id), "-X-GM-LABELS (homemetrics-todo-xsense)")
             .await
-            .context("Impossible de supprimer les labels")?;
+            .context("Impossible de supprimer le label 'homemetrics-todo-xsense'")?;
         
         // Consommer le stream
         let _results: Vec<_> = store_stream.collect::<Vec<_>>().await;
