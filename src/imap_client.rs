@@ -236,37 +236,6 @@ impl ImapClient {
         Ok(())
     }
     
-    /// Déplace un email vers un répertoire spécifique
-    pub async fn move_email_to_folder(&mut self, message_id: u32, target_folder: &str) -> Result<()> {
-        info!("Déplacement de l'email {} vers {}", message_id, target_folder);
-        
-        // S'assurer que nous sommes dans INBOX
-        self.session.select("INBOX")
-            .await
-            .context("Impossible de sélectionner INBOX")?;
-        
-        // Copier l'email vers le dossier cible
-        self.session.copy(&message_id.to_string(), target_folder)
-            .await
-            .context(format!("Impossible de copier l'email vers {}", target_folder))?;
-        
-        // Marquer l'email comme supprimé dans INBOX
-        let store_stream = self.session.store(format!("{}", message_id), "+FLAGS (\\Deleted)")
-            .await
-            .context("Impossible de marquer l'email comme supprimé")?;
-        
-        // Consommer le stream (nécessaire pour que l'opération soit effectuée)
-        let _store_results: Vec<_> = store_stream.collect::<Vec<_>>().await;
-        
-        // Expunge pour supprimer définitivement les emails marqués
-        //self.session.expunge()
-        //    .await
-        //    .context("Impossible d'expunge les emails supprimés")?;
-        
-        info!("✅ Email {} déplacé vers {}", message_id, target_folder);
-        Ok(())
-    }
-    
     /// Ajoute le label "done" et supprime tous les autres labels Gmail
     /// Utilise X-GM-LABELS pour gérer les labels Gmail
     pub async fn mark_email_as_processed(&mut self, message_id: u32) -> Result<()> {
@@ -287,7 +256,7 @@ impl ImapClient {
         // Consommer le stream
         let _results: Vec<_> = store_stream.collect::<Vec<_>>().await;
         
-        // Étape 2: Ajouter uniquement le label "done"
+        // Étape 2: Ajouter uniquement le label "homemetrics-done-xsense"
         debug!("Ajout du label 'homemetrics-done-xsense' à l'email {}", message_id);
         let store_stream = self.session
             .store(format!("{}", message_id), "+X-GM-LABELS (homemetrics-done-xsense)")

@@ -28,7 +28,7 @@ impl SlackNotifier {
     /// Envoie une notification de succès pour un email traité
     pub async fn notify_email_processed(
         &self,
-        email_id: u32,
+        email_id: &str,
         email_subject: &str,
         email_date: chrono::DateTime<chrono::Utc>,
         readings_count: usize,

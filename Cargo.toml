@@ -9,14 +9,14 @@ tokio = { version = "1.40", features = ["full"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 futures = "0.3"
 
-# IMAP client et TLS
-async-imap = "0.9"
-async-native-tls = "0.5.0"
-imap-next = "0.3.1"
+# Gmail API
+google-gmail1 = "5.0.5"
+hyper = "0.14"
+hyper-rustls = "0.24"
+yup-oauth2 = "8.3"
 
 # Gestion des emails et parsing MIME
 mail-parser = "0.9"
-lettre = "0.11"
 
 # Serialization et parsing de données
 serde = { version = "1.0", features = ["derive"] }

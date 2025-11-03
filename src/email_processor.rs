@@ -2,7 +2,7 @@ use anyhow::{Result, Context};
 use log::{info, debug, warn, error};
 
 use crate::config::Config;
-use crate::imap_client::ImapClient;
+use crate::gmail_client::GmailClient;
 use crate::attachment_parser::{AttachmentParser, Attachment};
 use crate::temperature_extractor::TemperatureExtractor;
 use crate::database::Database;
@@ -71,12 +71,12 @@ impl EmailProcessor {
     
     // Fonction commune pour traiter les emails en mode dry-run ou normal
     async fn process_emails_common(&self, limit: Option<usize>, is_dry_run: bool) -> Result<usize> {
-        // 1. Se connecter au serveur IMAP
-        let mut imap_client = ImapClient::new(&self.config.imap).await
-            .context("Impossible de se connecter au serveur IMAP")?;
+        // 1. Se connecter à l'API Gmail
+        let gmail_client = GmailClient::new(&self.config.gmail).await
+            .context("Impossible de se connecter à l'API Gmail")?;
         
         // 2. Rechercher les emails avec le label 'homemetrics-todo-xsense'
-        let message_ids = imap_client.search_xsense_emails()
+        let message_ids = gmail_client.search_xsense_emails()
             .await
             .context("Erreur lors de la recherche d'emails")?;
         
@@ -110,7 +110,7 @@ impl EmailProcessor {
                 println!("{}", "-".repeat(60));
             }
             
-            match self.process_single_email_common(&mut imap_client, *message_id, is_dry_run).await {
+            match self.process_single_email_common(&gmail_client, message_id, is_dry_run).await {
                 Ok(readings_count) => {
                     total_processed += 1;
                     if readings_count == 0 {
@@ -142,10 +142,7 @@ impl EmailProcessor {
             }
         }
         
-        // 4. Se déconnecter proprement
-        imap_client.logout()
-            .await
-            .context("Erreur lors de la déconnexion IMAP")?;
+        // Pas besoin de logout avec l'API REST Gmail
         
         if is_dry_run {
             println!("{}", "=".repeat(80));
@@ -163,8 +160,8 @@ impl EmailProcessor {
     // Fonction commune pour traiter un seul email selon le mode
     async fn process_single_email_common(
         &self,
-        imap_client: &mut ImapClient,
-        message_id: u32,
+        gmail_client: &GmailClient,
+        message_id: &str,
         is_dry_run: bool,
     ) -> Result<usize> {
         if is_dry_run {
@@ -174,9 +171,20 @@ impl EmailProcessor {
         }
         
         // 1. Récupérer toutes les informations de l'email en un seul appel
-        let email_info = imap_client.fetch_email_complete(message_id)
-            .await
-            .context("Impossible de récupérer l'email complet")?;
+        let email_info = match gmail_client.fetch_email_complete(message_id).await {
+            Ok(info) => info,
+            Err(e) => {
+                // En cas d'erreur, essayer de récupérer au moins les métadonnées pour l'affichage
+                let (subject, from) = gmail_client.fetch_email_metadata(message_id)
+                    .await
+                    .unwrap_or((String::from("Sujet inconnu"), String::from("Expéditeur inconnu")));
+                
+                return Err(anyhow::anyhow!(
+                    "Impossible de récupérer l'email complet\n  Sujet: {}\n  De: {}\n  Erreur: {}", 
+                    subject, from, e
+                ));
+            }
+        };
         
         // 2. En mode dry-run, afficher les headers et la date
         if is_dry_run {
@@ -278,7 +286,7 @@ impl EmailProcessor {
         // 7. Marquer l'email comme traité et envoyer notification Slack (mode normal uniquement)
         if !is_dry_run && total_readings > 0 {
             // 7a. Marquer avec le label
-            match imap_client.mark_email_as_processed(message_id).await {
+            match gmail_client.mark_email_as_processed(message_id).await {
                 Ok(_) => {
                     info!("Email {} marqué comme traité", message_id);
                 }
@@ -292,7 +300,7 @@ impl EmailProcessor {
             // 7b. Envoyer notification Slack
             if let Some(ref slack) = self.slack {
                 match slack.notify_email_processed(
-                    message_id,
+                    &email_info.id,
                     &email_info.subject,
                     email_info.date,
                     total_readings,

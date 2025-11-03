@@ -3,7 +3,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
-    pub imap: ImapConfig,
+    pub gmail: GmailConfig,
     pub database: DatabaseConfig,
     pub data_dir: String,
     pub scheduler: SchedulerConfig,
@@ -17,11 +17,9 @@ pub struct SchedulerConfig {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct ImapConfig {
-    pub server: String,
-    pub port: u16,
-    pub username: String,
-    pub password: String,
+pub struct GmailConfig {
+    pub credentials_path: String,
+    pub token_cache_path: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -46,17 +44,11 @@ impl Config {
         
         // Configuration chargée depuis les variables d'environnement
         Ok(Config {
-            imap: ImapConfig {
-                server: std::env::var("IMAP_SERVER")
-                    .unwrap_or_else(|_| "imap.gmail.com".to_string()),
-                port: std::env::var("IMAP_PORT")
-                    .unwrap_or_else(|_| "993".to_string())
-                    .parse()
-                    .unwrap_or(993),
-                username: std::env::var("IMAP_USERNAME")
-                    .expect("IMAP_USERNAME doit être défini"),
-                password: std::env::var("IMAP_PASSWORD")
-                    .expect("IMAP_PASSWORD doit être défini"),
+            gmail: GmailConfig {
+                credentials_path: std::env::var("GMAIL_CREDENTIALS_PATH")
+                    .expect("GMAIL_CREDENTIALS_PATH doit être défini"),
+                token_cache_path: std::env::var("GMAIL_TOKEN_CACHE_PATH")
+                    .unwrap_or_else(|_| "./gmail-token-cache.json".to_string()),
             },
             database: DatabaseConfig {
                 host: std::env::var("DB_HOST")
@@ -100,8 +92,7 @@ impl Config {
     
     fn check_required_env_vars() -> Result<()> {
         let required_vars = [
-            "IMAP_USERNAME",
-            "IMAP_PASSWORD",
+            "GMAIL_CREDENTIALS_PATH",
         ];
         
         let mut missing_vars = Vec::new();
@@ -122,11 +113,11 @@ impl Config {
                     # Puis éditer .env avec vos valeurs\n\
                  \n\
                  2. Ou définir les variables manuellement :\n\
-                    export IMAP_USERNAME=your-email@gmail.com\n\
-                    export IMAP_PASSWORD=your-app-password\n\
+                    export GMAIL_CREDENTIALS_PATH=/path/to/client_credentials.json\n\
+                    export GMAIL_TOKEN_CACHE_PATH=./gmail-token-cache.json\n\
                     cargo run -- --dry-run\n\
                  \n\
-                 3. Voir le README.md pour plus d'informations",
+                 3. Voir le GMAIL_API_MIGRATION.md pour plus d'informations",
                 missing_vars.join(", ")
             );
         }

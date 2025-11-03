@@ -3,7 +3,7 @@ use log::{info, error};
 use clap::Parser;
 
 mod config;
-mod imap_client;
+mod gmail_client;
 mod attachment_parser;
 mod temperature_extractor;
 mod database;
@@ -62,8 +62,9 @@ async fn main() -> Result<()> {
     // Si demandé, vérifier seulement la configuration
     if args.check_config {
         println!("✅ Configuration valide !");
-        println!("📧 Serveur IMAP: {}:{}", config.imap.server, config.imap.port);
-        println!("👤 Utilisateur: {}", config.imap.username);
+        println!("📧 Gmail API OAuth2");
+        println!("🔑 Credentials: {}", config.gmail.credentials_path);
+        println!("💾 Token cache: {}", config.gmail.token_cache_path);
         println!("📁 Répertoire data: {}", config.data_dir);
         if !args.dry_run {
             println!("🗄️  Base de données: {}@{}:{}/{}", 
