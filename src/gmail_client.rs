@@ -55,10 +55,10 @@ impl GmailClient {
     }
     
     pub async fn search_xsense_emails(&self) -> Result<Vec<String>> {
-        info!("Searching for emails with label 'homemetrics-todo-xsense'");
+        info!("Searching for emails with label 'homemetrics/todo/xsense'");
         
         let user_id = "me";
-        let query = "label:homemetrics-todo-xsense";
+        let query = "label:homemetrics/todo/xsense";
         
         debug!("Search criteria: {}", query);
         
@@ -78,9 +78,66 @@ impl GmailClient {
             .filter_map(|msg| msg.id)
             .collect();
         
-        info!("Found {} email(s) with label 'homemetrics-todo-xsense'", message_ids.len());
+        info!("Found {} email(s) with label 'homemetrics/todo/xsense'", message_ids.len());
         
         Ok(message_ids)
+    }
+    
+    /// List all Gmail labels with their IDs and names
+    pub async fn list_labels(&self) -> Result<()> {
+        info!("Retrieving Gmail labels list");
+        
+        let user_id = "me";
+        
+        let result = self.hub
+            .users()
+            .labels_list(user_id)
+            .add_scope(google_gmail1::api::Scope::Modify)
+            .doit()
+            .await
+            .context("Unable to list labels")?;
+        
+        let labels = result.1.labels.unwrap_or_default();
+        
+        if labels.is_empty() {
+            println!("No labels found.");
+            return Ok(());
+        }
+        
+        println!("Found {} label(s):\n", labels.len());
+        println!("{:<40} {:<30} {:<15}", "Label Name", "Label ID", "Type");
+        println!("{}", "=".repeat(85));
+        
+        // Sort labels: homemetrics labels first, then system, then user
+        let mut sorted_labels = labels;
+        sorted_labels.sort_by(|a, b| {
+            let a_name = a.name.as_deref().unwrap_or("");
+            let b_name = b.name.as_deref().unwrap_or("");
+            
+            let a_is_homemetrics = a_name.starts_with("homemetrics");
+            let b_is_homemetrics = b_name.starts_with("homemetrics");
+            
+            match (a_is_homemetrics, b_is_homemetrics) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a_name.cmp(b_name),
+            }
+        });
+        
+        for label in sorted_labels {
+            let name = label.name.unwrap_or_else(|| "Unknown".to_string());
+            let id = label.id.unwrap_or_else(|| "Unknown".to_string());
+            let label_type = label.type_.unwrap_or_else(|| "Unknown".to_string());
+            
+            // Highlight homemetrics labels
+            if name.starts_with("homemetrics") {
+                println!("✨ {:<38} {:<30} {:<15}", name, id, label_type);
+            } else {
+                println!("{:<40} {:<30} {:<15}", name, id, label_type);
+            }
+        }
+        
+        Ok(())
     }
     
     /// Retrieve only email metadata (subject and sender)
@@ -218,11 +275,11 @@ impl GmailClient {
         
         // Trouver les IDs des labels
         let todo_label_id = labels.iter()
-            .find(|l| l.name.as_deref() == Some("homemetrics-todo-xsense"))
+            .find(|l| l.name.as_deref() == Some("homemetrics/todo/xsense"))
             .and_then(|l| l.id.clone());
         
         let done_label_id = labels.iter()
-            .find(|l| l.name.as_deref() == Some("homemetrics-done-xsense"))
+            .find(|l| l.name.as_deref() == Some("homemetrics/done/xsense"))
             .and_then(|l| l.id.clone());
         
         // Create modification request
@@ -231,17 +288,17 @@ impl GmailClient {
         // Supprimer le label "todo"
         if let Some(todo_id) = todo_label_id {
             modify_request.remove_label_ids = Some(vec![todo_id]);
-            debug!("Removing label 'homemetrics-todo-xsense'");
+            debug!("Removing label 'homemetrics/todo/xsense'");
         } else {
-            warn!("Label.*not found");
+            warn!("Label 'homemetrics/todo/xsense' not found");
         }
         
         // Ajouter le label "done"
         if let Some(done_id) = done_label_id {
             modify_request.add_label_ids = Some(vec![done_id]);
-            debug!("Adding label 'homemetrics-done-xsense'");
+            debug!("Adding label 'homemetrics/done/xsense'");
         } else {
-            warn!("Label.*not found, it will need to be created in Gmail");
+            warn!("Label 'homemetrics/done/xsense' not found, it will need to be created in Gmail");
         }
         
         // Apply modifications
@@ -253,7 +310,7 @@ impl GmailClient {
             .await
             .context("Unable to modify email labels")?;
         
-        info!("✅ Email {} marked as processed with label 'homemetrics-done-xsense'", message_id);
+        info!("✅ Email {} marked as processed with label 'homemetrics/done/xsense'", message_id);
         Ok(())
     }
 }

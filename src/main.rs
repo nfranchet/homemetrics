@@ -34,6 +34,10 @@ struct Args {
     #[arg(short = 'l', long)]
     limit: Option<usize>,
     
+    /// List all Gmail labels with their IDs
+    #[arg(long)]
+    list_labels: bool,
+    
     /// Check configuration without connecting
     #[arg(long)]
     check_config: bool,
@@ -58,6 +62,16 @@ async fn main() -> Result<()> {
     
     // Load configuration
     let mut config = Config::new()?;
+    
+    // If requested, list Gmail labels and exit
+    if args.list_labels {
+        use gmail_client::GmailClient;
+        
+        println!("📋 Listing Gmail labels...\n");
+        let gmail = GmailClient::new(&config.gmail).await?;
+        gmail.list_labels().await?;
+        return Ok(());
+    }
     
     // If requested, only check configuration
     if args.check_config {

@@ -139,6 +139,7 @@ impl Database {
             .context("Error checking for duplicates")?;
             
             if exists.is_some() {
+                saved_count += 1; // We count duplicates as "saved" to reflect total processed
                 debug!("Existing reading skipped: {} à {}", reading.sensor_id, reading.timestamp);
                 continue;
             }
