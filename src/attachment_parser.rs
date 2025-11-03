@@ -397,7 +397,6 @@ impl AttachmentParser {
     
 
     
-    #[allow(dead_code)]
     fn is_data_file(filename: &str) -> bool {
         let lowercase_name = filename.to_lowercase();
         lowercase_name.ends_with(".csv") ||
@@ -420,7 +419,7 @@ impl AttachmentParser {
             .context("Impossible de créer le répertoire data")?;
         
         // Utiliser la date de l'email si fournie, sinon la date actuelle
-        let date_to_use = email_date.unwrap_or_else(|| Utc::now());
+        let date_to_use = email_date.unwrap_or_else(Utc::now);
         let date_prefix = date_to_use.format("%Y%m%d_%H%M%S");
         let filename = format!("{}_{}", date_prefix, attachment.filename);
         let file_path = PathBuf::from(data_dir).join(&filename);

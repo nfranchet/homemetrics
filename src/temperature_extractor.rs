@@ -142,73 +142,7 @@ impl TemperatureExtractor {
         Ok(DateTime::from_naive_utc_and_offset(naive_dt, Utc))
     }
     
-    fn extract_from_csv(content: &[u8]) -> Result<Vec<TemperatureReading>> {
-        debug!("Extraction depuis fichier CSV générique");
-        
-        let content_str = std::str::from_utf8(content)
-            .context("Impossible de décoder le contenu CSV en UTF-8")?;
-        
-        let mut reader = ReaderBuilder::new()
-            .has_headers(true)
-            .from_reader(content_str.as_bytes());
-        
-        let mut readings = Vec::new();
-        
-        // Essayer différents formats de CSV courants pour les capteurs X-Sense
-        for result in reader.records() {
-            let record = result.context("Erreur lors de la lecture d'un enregistrement CSV")?;
-            
-            if let Ok(reading) = Self::parse_csv_record(&record) {
-                readings.push(reading);
-            }
-        }
-        
-        info!("Extrait {} lectures de température depuis CSV", readings.len());
-        Ok(readings)
-    }
-    
-    fn parse_csv_record(record: &csv::StringRecord) -> Result<TemperatureReading> {
-        // Format attendu: timestamp, sensor_id, temperature, [humidity], [location]
-        // Ou variations communes
-        
-        if record.len() < 3 {
-            anyhow::bail!("Enregistrement CSV insuffisant: {} colonnes", record.len());
-        }
-        
-        // Analyser timestamp (colonne 0 ou 1)
-        let timestamp_str = record.get(0).unwrap_or("");
-        let timestamp = Self::parse_timestamp(timestamp_str)?;
-        
-        // Analyser sensor_id
-        let sensor_id = record.get(1).unwrap_or("unknown").to_string();
-        
-        // Analyser température
-        let temp_str = record.get(2).unwrap_or("0");
-        let temperature: f64 = temp_str.parse()
-            .context("Impossible de parser la température")?;
-        
-        // Analyser humidité (optionnel)
-        let humidity = if record.len() > 3 {
-            record.get(3).and_then(|s| s.parse().ok())
-        } else {
-            None
-        };
-        
-        // Analyser localisation (optionnel)
-        let location = if record.len() > 4 {
-            record.get(4).map(|s| s.to_string()).filter(|s| !s.is_empty())
-        } else {
-            None
-        };
-        
-        Ok(TemperatureReading {
-            sensor_id,
-            timestamp,
-            temperature,
-            humidity,
-            location,
-        })
-    }
+
     
     fn extract_from_json(content: &[u8]) -> Result<Vec<TemperatureReading>> {
         debug!("Extraction depuis fichier JSON");

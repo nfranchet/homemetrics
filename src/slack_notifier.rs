@@ -1,4 +1,4 @@
-use anyhow::{Result, Context};
+use anyhow::Result;
 use log::{info, error};
 use slack_morphism::prelude::*;
 
@@ -76,31 +76,5 @@ impl SlackNotifier {
                 Err(anyhow::anyhow!("Impossible d'envoyer le message Slack: {}", e))
             }
         }
-    }
-    
-    /// Envoie une notification d'erreur
-    pub async fn notify_error(&self, email_id: u32, error_message: &str) -> Result<()> {
-        info!("Envoi de notification d'erreur Slack pour l'email {}", email_id);
-        
-        let message_text = format!(
-            "❌ *Erreur lors du traitement de l'email X-Sense*\n\n\
-             • Email ID: `{}`\n\
-             • Erreur: ```{}```",
-            email_id,
-            error_message
-        );
-        
-        let post_chat_req = SlackApiChatPostMessageRequest::new(
-            self.channel_id.clone(),
-            SlackMessageContent::new().with_text(message_text),
-        );
-        
-        let session = self.client.open_session(&self.token);
-        
-        session.chat_post_message(&post_chat_req)
-            .await
-            .context("Impossible d'envoyer le message d'erreur Slack")?;
-        
-        Ok(())
     }
 }

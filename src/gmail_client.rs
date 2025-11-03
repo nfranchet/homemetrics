@@ -165,7 +165,7 @@ impl GmailClient {
         let email_date = if let Some(date_header) = parsed_email.date() {
             chrono::DateTime::from_timestamp(date_header.to_timestamp(), 0)
                 .map(|dt| dt.with_timezone(&chrono::Utc))
-                .unwrap_or_else(|| chrono::Utc::now())
+                .unwrap_or_else(chrono::Utc::now)
         } else {
             warn!("Pas de date dans l'email, utilisation de la date actuelle");
             chrono::Utc::now()

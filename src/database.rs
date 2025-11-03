@@ -133,7 +133,7 @@ impl Database {
                 "SELECT 1 FROM temperature_readings WHERE sensor_id = $1 AND timestamp = $2"
             )
             .bind(&reading.sensor_id)
-            .bind(&reading.timestamp)
+            .bind(reading.timestamp)
             .fetch_optional(&mut *transaction)
             .await
             .context("Erreur lors de la vérification des doublons")?;
@@ -152,7 +152,7 @@ impl Database {
                 "#
             )
             .bind(&reading.sensor_id)
-            .bind(&reading.timestamp)
+            .bind(reading.timestamp)
             .bind(reading.temperature)
             .bind(reading.humidity)
             .bind(&reading.location)
@@ -212,7 +212,6 @@ impl Database {
         Ok(())
     }
     
-    #[allow(dead_code)]
     pub async fn get_latest_readings(&self, sensor_id: Option<&str>, limit: i64) -> Result<Vec<TemperatureReading>> {
         let query = if let Some(sid) = sensor_id {
             sqlx::query(
@@ -256,7 +255,6 @@ impl Database {
         Ok(readings)
     }
     
-    #[allow(dead_code)]
     pub async fn close(self) -> Result<()> {
         info!("Fermeture de la connexion à la base de données");
         self.pool.close().await;
