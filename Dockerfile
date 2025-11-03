@@ -7,4 +7,4 @@ RUN apt-get update \
 
 COPY target/release/homemetrics /bin/homemetrics
 
-CMD [ "/bin/homemetrics" ]
+CMD [ "/bin/homemetrics", "--daemon" ]
