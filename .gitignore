@@ -20,6 +20,12 @@ Thumbs.db
 # Environment variables
 .env
 
+# Gmail OAuth2 credentials and tokens
+gmail-credentials.json
+gmail-token-cache.json
+*credentials.json
+*-token*.json
+
 # Temporary files
 *.tmp
 *.temp

@@ -11,7 +11,7 @@ pub struct Database {
 
 impl Database {
     pub async fn new(config: &DatabaseConfig) -> Result<Self> {
-        info!("Connexion à la base de données TimescaleDB");
+        info!("Connecting to TimescaleDB database");
         
         let database_url = format!(
             "postgres://{}:{}@{}:{}/{}",
@@ -22,34 +22,34 @@ impl Database {
             .await
             .context("Impossible de se connecter à la base de données")?;
         
-        info!("Connexion à la base de données établie");
+        info!("Database connection established");
         
         let db = Database { pool };
         
-        // Créer les tables si elles n'existent pas
+        // Create tables if they don't exist
         db.create_tables_if_not_exists().await?;
         
         Ok(db)
     }
     
     async fn create_tables_if_not_exists(&self) -> Result<()> {
-        info!("Vérification/création des tables de base de données");
+        info!("Checking/creating database tables");
         
-        // Essayer de créer l'extension TimescaleDB si disponible
+        // Try to create TimescaleDB extension if available
         let _timescaledb_available = match sqlx::query("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
             .execute(&self.pool)
             .await {
                 Ok(_) => {
-                    info!("✅ Extension TimescaleDB créée/disponible");
+                    info!("✅ TimescaleDB extension created/available");
                     true
                 },
                 Err(e) => {
-                    warn!("⚠️  TimescaleDB non disponible, utilisation de PostgreSQL standard: {}", e);
+                    warn!("⚠️  TimescaleDB not available, using standard PostgreSQL: {}", e);
                     false
                 }
             };
         
-        // Créer la table des capteurs
+        // Create sensors table
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS sensors (
@@ -63,9 +63,9 @@ impl Database {
         )
         .execute(&self.pool)
         .await
-        .context("Impossible de créer la table sensors")?;
+        .context("Unable to create sensors table")?;
         
-        // Créer la table des lectures de température
+        // Create temperature readings table
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS temperature_readings (
@@ -82,32 +82,32 @@ impl Database {
         )
         .execute(&self.pool)
         .await
-        .context("Impossible de créer la table temperature_readings")?;
+        .context("Unable to create temperature_readings table")?;
         
-        // Créer une hypertable TimescaleDB pour les lectures de température
+        // Create TimescaleDB hypertable for temperature readings
         let _result = sqlx::query(
             "SELECT create_hypertable('temperature_readings', 'timestamp', if_not_exists => TRUE)"
         )
         .execute(&self.pool)
         .await;
-        // Ignorer l'erreur si la hypertable existe déjà
+        // Ignore error if hypertable already exists
         
-        // Créer des index pour optimiser les requêtes
+        // Create indexes to optimize queries
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_temp_readings_sensor_time ON temperature_readings (sensor_id, timestamp DESC)"
         )
         .execute(&self.pool)
         .await
-        .context("Impossible de créer l'index sur sensor_id et timestamp")?;
+        .context("Unable to create index sur sensor_id et timestamp")?;
         
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_temp_readings_timestamp ON temperature_readings (timestamp DESC)"
         )
         .execute(&self.pool)
         .await
-        .context("Impossible de créer l'index sur timestamp")?;
+        .context("Unable to create index sur timestamp")?;
         
-        info!("Tables de base de données vérifiées/créées avec succès");
+        info!("Database tables checked/created successfully");
         Ok(())
     }
     
@@ -116,34 +116,35 @@ impl Database {
             return Ok(0);
         }
         
-        info!("Sauvegarde de {} lectures de température", readings.len());
+        info!("Saving {} temperature readings", readings.len());
         
         let mut transaction = self.pool.begin()
             .await
-            .context("Impossible de commencer la transaction")?;
+            .context("Unable to start transaction")?;
         
         let mut saved_count = 0;
         
         for reading in readings {
-            // D'abord, s'assurer que le capteur existe
+            // First, make sure the sensor exists
             self.ensure_sensor_exists(&mut transaction, &reading.sensor_id, &reading.location).await?;
             
-            // Vérifier si cette lecture existe déjà (éviter les doublons)
+            // Check if this reading already exists (avoid duplicates)
             let exists = sqlx::query(
                 "SELECT 1 FROM temperature_readings WHERE sensor_id = $1 AND timestamp = $2"
             )
             .bind(&reading.sensor_id)
-            .bind(&reading.timestamp)
+            .bind(reading.timestamp)
             .fetch_optional(&mut *transaction)
             .await
-            .context("Erreur lors de la vérification des doublons")?;
+            .context("Error checking for duplicates")?;
             
             if exists.is_some() {
-                debug!("Lecture déjà existante ignorée: {} à {}", reading.sensor_id, reading.timestamp);
+                saved_count += 1; // We count duplicates as "saved" to reflect total processed
+                debug!("Existing reading skipped: {} à {}", reading.sensor_id, reading.timestamp);
                 continue;
             }
             
-            // Insérer la nouvelle lecture
+            // Insert new reading
             sqlx::query(
                 r#"
                 INSERT INTO temperature_readings 
@@ -152,25 +153,25 @@ impl Database {
                 "#
             )
             .bind(&reading.sensor_id)
-            .bind(&reading.timestamp)
+            .bind(reading.timestamp)
             .bind(reading.temperature)
             .bind(reading.humidity)
             .bind(&reading.location)
             .execute(&mut *transaction)
             .await
-            .context("Erreur lors de l'insertion de la lecture de température")?;
+            .context("Error inserting temperature reading")?;
             
             saved_count += 1;
             
-            debug!("Lecture sauvegardée: {} = {}°C à {}", 
+            debug!("Reading saved: {} = {}°C à {}", 
                    reading.sensor_id, reading.temperature, reading.timestamp);
         }
         
         transaction.commit()
             .await
-            .context("Erreur lors de la validation de la transaction")?;
+            .context("Error committing transaction")?;
         
-        info!("Sauvegarde terminée: {} nouvelles lectures sur {} traitées", saved_count, readings.len());
+        info!("Save completed: {} new readings out of {} processed", saved_count, readings.len());
         Ok(saved_count)
     }
     
@@ -184,7 +185,7 @@ impl Database {
             .bind(sensor_id)
             .fetch_optional(&mut **transaction)
             .await
-            .context("Erreur lors de la vérification de l'existence du capteur")?;
+            .context("Error checking sensor existence")?;
         
         if exists.is_none() {
             sqlx::query(
@@ -194,11 +195,11 @@ impl Database {
             .bind(location)
             .execute(&mut **transaction)
             .await
-            .context("Erreur lors de l'insertion du capteur")?;
+            .context("Error inserting sensor")?;
             
-            debug!("Nouveau capteur créé: {}", sensor_id);
+            debug!("New sensor created: {}", sensor_id);
         } else if let Some(loc) = location {
-            // Mettre à jour la localisation si elle est fournie
+            // Update location if provided
             sqlx::query(
                 "UPDATE sensors SET location = $2, updated_at = NOW() WHERE sensor_id = $1 AND location IS NULL"
             )
@@ -206,13 +207,12 @@ impl Database {
             .bind(loc)
             .execute(&mut **transaction)
             .await
-            .context("Erreur lors de la mise à jour de la localisation du capteur")?;
+            .context("Error updating sensor location")?;
         }
         
         Ok(())
     }
     
-    #[allow(dead_code)]
     pub async fn get_latest_readings(&self, sensor_id: Option<&str>, limit: i64) -> Result<Vec<TemperatureReading>> {
         let query = if let Some(sid) = sensor_id {
             sqlx::query(
@@ -240,7 +240,7 @@ impl Database {
         
         let rows = query.fetch_all(&self.pool)
             .await
-            .context("Erreur lors de la récupération des lectures")?;
+            .context("Error retrieving readings")?;
         
         let mut readings = Vec::new();
         for row in rows {
@@ -256,9 +256,8 @@ impl Database {
         Ok(readings)
     }
     
-    #[allow(dead_code)]
     pub async fn close(self) -> Result<()> {
-        info!("Fermeture de la connexion à la base de données");
+        info!("Closing database connection");
         self.pool.close().await;
         Ok(())
     }
