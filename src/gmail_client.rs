@@ -20,12 +20,14 @@ impl GmailClient {
     pub async fn new(config: &GmailConfig) -> Result<Self> {
         info!("Connecting to Gmail API via OAuth2");
         
-        // Lire les credentials OAuth2 client depuis le fichier
+        // Read OAuth2 client credentials from file
         let secret = oauth2::read_application_secret(&config.credentials_path)
             .await
             .context("Unable to read OAuth2 client credentials file")?;
         
-        // Create authenticator with token persistence and necessary scopes
+        // Create authenticator with token persistence
+        // Note: We use Scope::Modify on all API calls, which is the broadest scope available
+        // in google-gmail1 (covers reading, modifying labels, and managing emails)
         let auth = oauth2::InstalledFlowAuthenticator::builder(
             secret,
             oauth2::InstalledFlowReturnMethod::HTTPRedirect,
@@ -64,7 +66,7 @@ impl GmailClient {
             .users()
             .messages_list(user_id)
             .q(query)
-            .add_scope(google_gmail1::api::Scope::Readonly)
+            .add_scope(google_gmail1::api::Scope::Modify)
             .doit()
             .await
             .context("Error searching for emails")?;
@@ -94,7 +96,7 @@ impl GmailClient {
             .format("metadata")
             .add_metadata_headers("From")
             .add_metadata_headers("Subject")
-            .add_scope(google_gmail1::api::Scope::Readonly)
+            .add_scope(google_gmail1::api::Scope::Modify)
             .doit()
             .await
             .context("Unable to retrieve email metadata")?;
@@ -132,7 +134,7 @@ impl GmailClient {
             .users()
             .messages_get(user_id, message_id)
             .format("raw")
-            .add_scope(google_gmail1::api::Scope::Readonly)
+            .add_scope(google_gmail1::api::Scope::Modify)
             .doit()
             .await;
         
@@ -207,7 +209,7 @@ impl GmailClient {
         let labels_result = self.hub
             .users()
             .labels_list(user_id)
-            .add_scope(google_gmail1::api::Scope::Readonly)
+            .add_scope(google_gmail1::api::Scope::Modify)
             .doit()
             .await
             .context("Unable to list labels")?;
