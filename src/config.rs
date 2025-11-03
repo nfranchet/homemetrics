@@ -39,14 +39,14 @@ pub struct SlackConfig {
 
 impl Config {
     pub fn new() -> Result<Self> {
-        // Vérifier que les variables essentielles sont définies
+        // Check that essential variables are defined
         Self::check_required_env_vars()?;
         
-        // Configuration chargée depuis les variables d'environnement
+        // Configuration loaded from environment variables
         Ok(Config {
             gmail: GmailConfig {
                 credentials_path: std::env::var("GMAIL_CREDENTIALS_PATH")
-                    .expect("GMAIL_CREDENTIALS_PATH doit être défini"),
+                    .expect("GMAIL_CREDENTIALS_PATH must be defined"),
                 token_cache_path: std::env::var("GMAIL_TOKEN_CACHE_PATH")
                     .unwrap_or_else(|_| "./gmail-token-cache.json".to_string()),
             },
@@ -62,7 +62,7 @@ impl Config {
                 username: std::env::var("DB_USERNAME")
                     .unwrap_or_else(|_| "postgres".to_string()),
                 password: std::env::var("DB_PASSWORD")
-                    .expect("DB_PASSWORD doit être défini"),
+                    .expect("DB_PASSWORD must be defined"),
             },
             data_dir: std::env::var("DATA_DIR")
                 .unwrap_or_else(|_| "./data".to_string()),
@@ -83,7 +83,7 @@ impl Config {
                     channel_id,
                 }),
                 _ => {
-                    log::warn!("SLACK_BOT_TOKEN ou SLACK_CHANNEL_ID non défini - notifications Slack désactivées");
+                    log::warn!("SLACK_BOT_TOKEN or SLACK_CHANNEL_ID not defined - Slack notifications disabled");
                     None
                 }
             },
@@ -105,19 +105,19 @@ impl Config {
         
         if !missing_vars.is_empty() {
             anyhow::bail!(
-                "Variables d'environnement manquantes: {}\n\
+                "Missing environment variables: {}\n\
                  \n\
-                 💡 Solutions :\n\
-                 1. Créer un fichier .env avec vos credentials :\n\
+                 💡 Solutions:\n\
+                 1. Create a .env file with your credentials:\n\
                     cp .env.example .env\n\
-                    # Puis éditer .env avec vos valeurs\n\
+                    # Then edit .env with your values\n\
                  \n\
-                 2. Ou définir les variables manuellement :\n\
+                 2. Or set variables manually:\n\
                     export GMAIL_CREDENTIALS_PATH=/path/to/client_credentials.json\n\
                     export GMAIL_TOKEN_CACHE_PATH=./gmail-token-cache.json\n\
                     cargo run -- --dry-run\n\
                  \n\
-                 3. Voir le GMAIL_API_MIGRATION.md pour plus d'informations",
+                 3. See GMAIL_API_MIGRATION.md for more information",
                 missing_vars.join(", ")
             );
         }

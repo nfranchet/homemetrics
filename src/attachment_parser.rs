@@ -19,14 +19,14 @@ impl AttachmentParser {
     pub fn parse_email(raw_email: &[u8]) -> Result<Vec<Attachment>> {
         debug!("Parsing email pour extraire les pièces jointes");
         
-        // Pour l'instant, utilisons un parser MIME basique mais fonctionnel
-        // Nous améliorerons cela plus tard avec une meilleure API
+        // For now, using a basic but functional MIME parser
+        // We will improve this later with a better API
         let email_str = String::from_utf8_lossy(raw_email);
         let mut attachments = Vec::new();
         
         debug!("Email size: {} bytes", email_str.len());
         
-        // Analysons d'abord la structure MIME de l'email
+        // First analyze the MIME structure of the email
         Self::analyze_email_structure(&email_str);
         
         // Rechercher les sections avec Content-Disposition: attachment
@@ -35,15 +35,15 @@ impl AttachmentParser {
             let abs_start = current_pos + attachment_start;
             debug!("Found Content-Disposition: attachment at position {}", abs_start);
             
-            // Chercher le nom du fichier
+            // Search for filename
             if let Some(filename) = Self::extract_filename_from_headers(&email_str[abs_start..]) {
                 debug!("Extracted filename: {}", filename);
                 if Self::is_data_file(&filename) {
-                    // Chercher le début du contenu de la pièce jointe
+                    // Search for attachment content start
                     if let Some(content_start) = email_str[abs_start..].find("\r\n\r\n") {
                         let abs_content_start = abs_start + content_start + 4;
                         
-                        // Chercher la fin de la pièce jointe (boundary suivant)
+                        // Search for attachment end (next boundary)
                         if let Some(content_end) = Self::find_attachment_end(&email_str[abs_content_start..]) {
                             let abs_content_end = abs_content_start + content_end;
                             let content_str = &email_str[abs_content_start..abs_content_end];
@@ -52,11 +52,11 @@ impl AttachmentParser {
                             debug!("Raw content preview (first 200 chars): {}", 
                                    &content_str[..std::cmp::min(200, content_str.len())]);
                             
-                            // Décoder le contenu (base64 ou autre)
+                            // Decode content (base64 or other)
                             if let Ok(content) = Self::decode_attachment_content(content_str) {
                                 let content_type = Self::guess_content_type(&filename);
                                 
-                                debug!("Pièce jointe trouvée: {} ({}), taille: {} bytes", 
+                                debug!("Attachment found: {} ({}), taille: {} bytes", 
                                        filename, content_type, content.len());
                                 
                                 attachments.push(Attachment {
@@ -73,37 +73,37 @@ impl AttachmentParser {
             current_pos = abs_start + 1;
         }
         
-        // Si aucune pièce jointe n'est trouvée avec l'approche manuelle,
-        // essayons des approches alternatives
+        // If no attachment is found with manual approach,
+        // try alternative approaches
         if attachments.is_empty() {
             debug!("No attachments found with manual parsing, trying alternative methods");
             Self::try_alternative_parsing(&email_str, &mut attachments)?;
         }
         
-        info!("Trouvé {} pièce(s) jointe(s)", attachments.len());
+        info!("Found {} attachment(s)", attachments.len());
         Ok(attachments)
     }
     
     fn analyze_email_structure(email_str: &str) {
         debug!("=== ANALYSIS OF EMAIL STRUCTURE ===");
         
-        // Chercher les boundaries
+        // Search for boundaries
         let boundaries: Vec<_> = email_str.matches("boundary=").take(5).collect();
         debug!("Found {} boundary declarations", boundaries.len());
         
-        // Chercher les Content-Type
+        // Search for Content-Type
         let content_types: Vec<_> = email_str.matches("Content-Type:").take(10).collect();
         debug!("Found {} Content-Type headers", content_types.len());
         
-        // Chercher les Content-Disposition
+        // Search for Content-Disposition
         let dispositions: Vec<_> = email_str.matches("Content-Disposition:").take(10).collect();
         debug!("Found {} Content-Disposition headers", dispositions.len());
         
-        // Afficher un échantillon de la structure
+        // Display structure sample
         let lines: Vec<&str> = email_str.lines().collect();
         debug!("Email has {} lines total", lines.len());
         
-        // Chercher des patterns intéressants
+        // Search for interesting patterns
         for (i, line) in lines.iter().enumerate().take(100) {
             if line.contains("Content-Type:") || 
                line.contains("Content-Disposition:") || 
@@ -118,10 +118,10 @@ impl AttachmentParser {
     fn try_alternative_parsing(email_str: &str, attachments: &mut Vec<Attachment>) -> Result<()> {
         debug!("Trying alternative parsing methods");
         
-        // Méthode 1: Chercher "filename=" directement
+        // Method 1: Search directly for "filename="
         Self::try_filename_direct_search(email_str, attachments)?;
         
-        // Méthode 2: Utiliser mail-parser en fallback
+        // Method 2: Use mail-parser as fallback
         if attachments.is_empty() {
             Self::try_mail_parser_fallback(email_str.as_bytes(), attachments)?;
         }
@@ -141,7 +141,7 @@ impl AttachmentParser {
                 debug!("Found filename via direct search: {}", filename);
                 
                 if Self::is_data_file(&filename) {
-                    // Chercher le contenu associé à ce filename
+                    // Search for content associated with this filename
                     if let Some(content) = Self::find_content_for_filename(email_str, abs_start) {
                         let content_type = Self::guess_content_type(&filename);
                         
@@ -171,7 +171,7 @@ impl AttachmentParser {
                     return Some(filename.to_string());
                 }
             } else {
-                // Prendre tout le reste de la ligne
+                // Take rest of line
                 let filename = filename_part.trim_matches('"').trim();
                 if !filename.is_empty() {
                     return Some(filename.to_string());
@@ -182,14 +182,14 @@ impl AttachmentParser {
     }
     
     fn find_content_for_filename(email_str: &str, filename_pos: usize) -> Option<Vec<u8>> {
-        // Partir de la position du filename et chercher le contenu
+        // Start from filename position and search for content
         let start_search = &email_str[filename_pos..];
         
-        // Chercher la fin des headers (double CRLF)
+        // Search for end of headers (double CRLF)
         if let Some(content_start_rel) = start_search.find("\r\n\r\n") {
             let content_start = filename_pos + content_start_rel + 4;
             
-            // Chercher la fin du contenu (prochain boundary ou fin d'email)
+            // Search for content end (next boundary or email end)
             let content_search = &email_str[content_start..];
             let content_end = if let Some(boundary_pos) = content_search.find("\r\n--") {
                 content_start + boundary_pos
@@ -219,7 +219,7 @@ impl AttachmentParser {
                 debug!("Processing attachment {}", i);
                 
                 
-                // Essayer d'extraire le contenu réel de la pièce jointe
+                // Try to extract real attachment content
                 let contents = part.contents();
                 debug!("Attachment {} content size: {} bytes", i, contents.len());
                 
@@ -227,7 +227,7 @@ impl AttachmentParser {
                 let filename = Self::extract_real_filename_from_part(part, i);
                 debug!("Extracted filename for attachment {}: {}", i, filename);
                 
-                // Si le contenu semble valide, l'utiliser
+                // If content seems valid, use it
                 if contents.len() > 10 {
                     let content_type = Self::guess_content_type(&filename);
                     
@@ -248,7 +248,7 @@ impl AttachmentParser {
     }
     
     fn extract_real_filename_from_part(part: &mail_parser::MessagePart, index: usize) -> String {
-        // Essayer différentes méthodes pour extraire le nom du fichier
+        // Try different methods to extract filename
         
         debug!("Trying to extract filename from attachment {}", index);
         
@@ -273,7 +273,7 @@ impl AttachmentParser {
     }
     
     fn find_attachment_end(content: &str) -> Option<usize> {
-        // Chercher la prochaine boundary ou fin de message
+        // Search for next boundary or message end
         if let Some(boundary_pos) = content.find("--") {
             Some(boundary_pos)
         } else {
@@ -286,7 +286,7 @@ impl AttachmentParser {
         
         debug!("Attempting to decode content of {} chars", content_str.len());
         
-        // Détecter le type d'encodage basé sur le contenu
+        // Detect encoding type based on content
         if Self::is_base64_content(content_str) {
             debug!("Detected base64 encoding");
             if let Ok(decoded) = general_purpose::STANDARD.decode(content_str.replace(['\r', '\n', ' '], "")) {
@@ -309,14 +309,14 @@ impl AttachmentParser {
             debug!("Content appears to be plain text");
         }
         
-        // Si aucun décodage spécial n'a fonctionné, traiter comme du texte brut
+        // If no special decoding worked, treat as plain text
         let result = content_str.as_bytes().to_vec();
         debug!("Using content as raw bytes: {} bytes", result.len());
         Ok(result)
     }
     
     fn is_base64_content(content: &str) -> bool {
-        // Base64 contient uniquement des caractères A-Z, a-z, 0-9, +, /, = et whitespace
+        // Base64 contains only A-Z, a-z, 0-9, +, /, = and whitespace characters
         let clean_content: String = content.chars()
             .filter(|c| !c.is_whitespace())
             .collect();
@@ -325,11 +325,11 @@ impl AttachmentParser {
             return false;
         }
         
-        // Vérifier que tous les caractères sont valides pour base64
+        // Check that all characters are valid for base64
         let valid_chars = clean_content.chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=');
         
-        // Et vérifier qu'il y a une densité raisonnable de caractères base64
+        // And check there is a reasonable density of base64 characters
         let base64_ratio = clean_content.chars()
             .filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '/')
             .count() as f64 / clean_content.len() as f64;
@@ -338,7 +338,7 @@ impl AttachmentParser {
     }
     
     fn is_quoted_printable_content(content: &str) -> bool {
-        // Quoted-printable contient des séquences =XX où XX sont des hex digits
+        // Quoted-printable contains =XX sequences where XX are hex digits
         content.contains("=") && 
         content.chars().filter(|c| *c == '=').count() > 2
     }
@@ -414,31 +414,31 @@ impl AttachmentParser {
         data_dir: &str, 
         email_date: Option<chrono::DateTime<Utc>>
     ) -> Result<PathBuf> {
-        // Créer le répertoire data s'il n'existe pas
+        // Create data directory if it does not exist
         fs::create_dir_all(data_dir)
-            .context("Impossible de créer le répertoire data")?;
+            .context("Unable to create data directory")?;
         
-        // Utiliser la date de l'email si fournie, sinon la date actuelle
+        // Use email date if provided, otherwise current date
         let date_to_use = email_date.unwrap_or_else(Utc::now);
         let date_prefix = date_to_use.format("%Y%m%d_%H%M%S");
         let filename = format!("{}_{}", date_prefix, attachment.filename);
         let file_path = PathBuf::from(data_dir).join(&filename);
         
-        // Sauvegarder le contenu
+        // Save content
         fs::write(&file_path, &attachment.content)
-            .context("Impossible d'écrire la pièce jointe")?;
+            .context("Unable to write attachment")?;
         
-        info!("Pièce jointe sauvegardée: {:?}", file_path);
+        info!("Attachment saved: {:?}", file_path);
         
         Ok(file_path)
     }
     
     pub fn display_attachment_info(attachment: &Attachment) {
-        println!("📎 Pièce jointe: {}", attachment.filename);
+        println!("📎 Attachment: {}", attachment.filename);
         println!("   Type: {}", attachment.content_type);
-        println!("   Taille: {} bytes", attachment.content.len());
+        println!("   Size: {} bytes", attachment.content.len());
         
-        // Afficher un aperçu du contenu si c'est du texte
+        // Display content preview if text
         if attachment.content_type.starts_with("text/") || 
            attachment.filename.to_lowercase().ends_with(".csv") ||
            attachment.filename.to_lowercase().ends_with(".json") ||
@@ -450,7 +450,7 @@ impl AttachmentParser {
                 } else {
                     content_str.to_string()
                 };
-                println!("   Aperçu:\n{}", preview);
+                println!("   Preview:\n{}", preview);
             }
         }
         println!("   {}", "─".repeat(80));
