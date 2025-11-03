@@ -145,6 +145,26 @@ async fn run_daemon_mode(config: Config, args: Args) -> Result<()> {
     
     info!("📅 Configured retrieval times: {:?}", config.scheduler.schedule_times);
     
+    // First, process emails immediately at startup
+    info!("🚀 Daemon starting - processing emails immediately...");
+    let initial_result = if args.dry_run {
+        let processor = EmailProcessor::new_dry_run(config.clone())?;
+        processor.process_emails_dry_run(args.limit).await
+    } else {
+        let mut processor = EmailProcessor::new(config.clone()).await?;
+        processor.process_emails(args.limit).await
+    };
+    
+    match initial_result {
+        Ok(count) => {
+            info!("✅ Initial processing completed. {} emails processed.", count);
+        }
+        Err(e) => {
+            error!("❌ Error during initial processing: {}", e);
+            error!("⚠️  Continuing with scheduled mode despite initial error...");
+        }
+    }
+    
     // Create the scheduler
     let scheduler = JobScheduler::new().await?;
     
