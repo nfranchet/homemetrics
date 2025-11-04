@@ -6,12 +6,15 @@ mod config;
 mod gmail_client;
 mod attachment_parser;
 mod temperature_extractor;
+mod pool_extractor;
 mod database;
 mod email_processor;
+mod pool_processor;
 mod slack_notifier;
 
 use config::Config;
 use email_processor::EmailProcessor;
+use pool_processor::PoolEmailProcessor;
 
 #[derive(Parser)]
 #[command(name = "homemetrics")]
@@ -101,14 +104,38 @@ async fn main() -> Result<()> {
     }
     
     // One-shot mode (default behavior)
+    info!("🚀 Processing both X-Sense and Blue Riot emails in parallel");
+    
     let result = if args.dry_run {
         // Dry-run mode: no database connection
-        let processor = EmailProcessor::new_dry_run(config)?;
-        processor.process_emails_dry_run(args.limit).await
+        let xsense_processor = EmailProcessor::new_dry_run(config.clone())?;
+        let mut pool_processor = PoolEmailProcessor::new(&config, true).await?;
+        
+        // Process both types in parallel
+        let (xsense_result, pool_result) = tokio::join!(
+            xsense_processor.process_emails_dry_run(args.limit),
+            pool_processor.process_emails(args.limit)
+        );
+        
+        let xsense_count = xsense_result?;
+        pool_result?; // Just check for errors
+        
+        Ok(xsense_count)
     } else {
         // Production mode: with database
-        let mut processor = EmailProcessor::new(config).await?;
-        processor.process_emails(args.limit).await
+        let mut xsense_processor = EmailProcessor::new(config.clone()).await?;
+        let mut pool_processor = PoolEmailProcessor::new(&config, false).await?;
+        
+        // Process both types in parallel
+        let (xsense_result, pool_result) = tokio::join!(
+            xsense_processor.process_emails(args.limit),
+            pool_processor.process_emails(args.limit)
+        );
+        
+        let xsense_count = xsense_result?;
+        pool_result?; // Just check for errors
+        
+        Ok(xsense_count)
     };
     
     match result {
@@ -148,11 +175,27 @@ async fn run_daemon_mode(config: Config, args: Args) -> Result<()> {
     // First, process emails immediately at startup
     info!("🚀 Daemon starting - processing emails immediately...");
     let initial_result = if args.dry_run {
-        let processor = EmailProcessor::new_dry_run(config.clone())?;
-        processor.process_emails_dry_run(args.limit).await
+        let xsense_processor = EmailProcessor::new_dry_run(config.clone())?;
+        let mut pool_processor = PoolEmailProcessor::new(&config, true).await?;
+        
+        let (xsense_result, pool_result) = tokio::join!(
+            xsense_processor.process_emails_dry_run(args.limit),
+            pool_processor.process_emails(args.limit)
+        );
+        
+        let _ = pool_result?; // Check for errors
+        xsense_result
     } else {
-        let mut processor = EmailProcessor::new(config.clone()).await?;
-        processor.process_emails(args.limit).await
+        let mut xsense_processor = EmailProcessor::new(config.clone()).await?;
+        let mut pool_processor = PoolEmailProcessor::new(&config, false).await?;
+        
+        let (xsense_result, pool_result) = tokio::join!(
+            xsense_processor.process_emails(args.limit),
+            pool_processor.process_emails(args.limit)
+        );
+        
+        let _ = pool_result?; // Check for errors
+        xsense_result
     };
     
     match initial_result {
@@ -197,23 +240,53 @@ async fn run_daemon_mode(config: Config, args: Args) -> Result<()> {
                 info!("⏰ Scheduled execution at {} - Retrieving emails...", schedule_time);
                 
                 let result = if dry_run {
-                    let processor = match EmailProcessor::new_dry_run(config) {
+                    let xsense_processor = match EmailProcessor::new_dry_run(config.clone()) {
                         Ok(p) => p,
                         Err(e) => {
-                            error!("❌ Error creating processor: {}", e);
+                            error!("❌ Error creating X-Sense processor: {}", e);
                             return;
                         }
                     };
-                    processor.process_emails_dry_run(limit).await
+                    
+                    let mut pool_processor = match PoolEmailProcessor::new(&config, true).await {
+                        Ok(p) => p,
+                        Err(e) => {
+                            error!("❌ Error creating pool processor: {}", e);
+                            return;
+                        }
+                    };
+                    
+                    let (xsense_result, pool_result) = tokio::join!(
+                        xsense_processor.process_emails_dry_run(limit),
+                        pool_processor.process_emails(limit)
+                    );
+                    
+                    let _ = pool_result; // Ignore pool result for count
+                    xsense_result
                 } else {
-                    let mut processor = match EmailProcessor::new(config).await {
+                    let mut xsense_processor = match EmailProcessor::new(config.clone()).await {
                         Ok(p) => p,
                         Err(e) => {
-                            error!("❌ Error creating processor: {}", e);
+                            error!("❌ Error creating X-Sense processor: {}", e);
                             return;
                         }
                     };
-                    processor.process_emails(limit).await
+                    
+                    let mut pool_processor = match PoolEmailProcessor::new(&config, false).await {
+                        Ok(p) => p,
+                        Err(e) => {
+                            error!("❌ Error creating pool processor: {}", e);
+                            return;
+                        }
+                    };
+                    
+                    let (xsense_result, pool_result) = tokio::join!(
+                        xsense_processor.process_emails(limit),
+                        pool_processor.process_emails(limit)
+                    );
+                    
+                    let _ = pool_result; // Ignore pool result for count
+                    xsense_result
                 };
                 
                 match result {
