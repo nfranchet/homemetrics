@@ -4,6 +4,7 @@ use sqlx::{PgPool, Row};
 
 use crate::config::DatabaseConfig;
 use crate::temperature_extractor::TemperatureReading;
+use crate::pool_extractor::PoolReading;
 
 pub struct Database {
     pool: PgPool,
@@ -106,6 +107,48 @@ impl Database {
         .execute(&self.pool)
         .await
         .context("Unable to create index sur timestamp")?;
+        
+        // Create pool_readings table for Blue Riot pool monitoring
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS pool_readings (
+                id SERIAL,
+                timestamp TIMESTAMPTZ NOT NULL,
+                temperature NUMERIC(5,2),
+                ph NUMERIC(4,2),
+                orp INTEGER,
+                email_id VARCHAR(255),
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (id, timestamp)
+            )
+            "#
+        )
+        .execute(&self.pool)
+        .await
+        .context("Unable to create pool_readings table")?;
+        
+        // Create TimescaleDB hypertable for pool readings
+        let _result = sqlx::query(
+            "SELECT create_hypertable('pool_readings', 'timestamp', if_not_exists => TRUE)"
+        )
+        .execute(&self.pool)
+        .await;
+        // Ignore error if hypertable already exists
+        
+        // Create indexes for pool readings
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_pool_readings_timestamp ON pool_readings (timestamp DESC)"
+        )
+        .execute(&self.pool)
+        .await
+        .context("Unable to create index on pool_readings timestamp")?;
+        
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_pool_readings_email ON pool_readings (email_id)"
+        )
+        .execute(&self.pool)
+        .await
+        .context("Unable to create index on pool_readings email_id")?;
         
         info!("Database tables checked/created successfully");
         Ok(())
@@ -254,6 +297,46 @@ impl Database {
         }
         
         Ok(readings)
+    }
+    
+    /// Save a pool reading to the database
+    pub async fn save_pool_reading(&self, reading: &PoolReading, email_id: &str) -> Result<()> {
+        debug!("Saving pool reading: temp={:?}°C, pH={:?}, ORP={:?} mV", 
+               reading.temperature, reading.ph, reading.orp);
+        
+        // Check if this reading already exists (by email_id)
+        let exists = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM pool_readings WHERE email_id = $1)"
+        )
+        .bind(email_id)
+        .fetch_one(&self.pool)
+        .await
+        .context("Failed to check for duplicate pool reading")?;
+        
+        if exists {
+            info!("Pool reading from email {} already exists, skipping", email_id);
+            return Ok(());
+        }
+        
+        sqlx::query(
+            r#"
+            INSERT INTO pool_readings (timestamp, temperature, ph, orp, email_id)
+            VALUES ($1, $2, $3, $4, $5)
+            "#
+        )
+        .bind(reading.timestamp)
+        .bind(reading.temperature)
+        .bind(reading.ph)
+        .bind(reading.orp)
+        .bind(email_id)
+        .execute(&self.pool)
+        .await
+        .context("Failed to insert pool reading")?;
+        
+        info!("✅ Pool reading saved: temp={:?}°C, pH={:?}, ORP={:?} mV", 
+              reading.temperature, reading.ph, reading.orp);
+        
+        Ok(())
     }
     
     pub async fn close(self) -> Result<()> {

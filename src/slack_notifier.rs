@@ -77,4 +77,27 @@ impl SlackNotifier {
             }
         }
     }
+    
+    /// Send a simple text message to Slack
+    pub async fn send_message(&self, text: &str) -> Result<()> {
+        info!("Sending Slack message");
+        
+        let post_chat_req = SlackApiChatPostMessageRequest::new(
+            self.channel_id.clone(),
+            SlackMessageContent::new().with_text(text.to_string()),
+        );
+        
+        let session = self.client.open_session(&self.token);
+        
+        match session.chat_post_message(&post_chat_req).await {
+            Ok(response) => {
+                info!("✅ Slack message sent successfully: {:?}", response.ts);
+                Ok(())
+            }
+            Err(e) => {
+                error!("❌ Error sending Slack message: {}", e);
+                Err(anyhow::anyhow!("Unable to send Slack message: {}", e))
+            }
+        }
+    }
 }
