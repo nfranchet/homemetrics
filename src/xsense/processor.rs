@@ -4,17 +4,17 @@ use log::{info, debug, warn, error};
 use crate::config::Config;
 use crate::gmail_client::GmailClient;
 use crate::attachment_parser::{AttachmentParser, Attachment};
-use crate::temperature_extractor::TemperatureExtractor;
 use crate::database::Database;
 use crate::slack_notifier::SlackNotifier;
+use super::extractor::TemperatureExtractor;
 
-pub struct EmailProcessor {
+pub struct XSenseEmailProcessor {
     config: Config,
     database: Option<Database>,
     slack: Option<SlackNotifier>,
 }
 
-impl EmailProcessor {
+impl XSenseEmailProcessor {
     pub async fn new(config: Config) -> Result<Self> {
         info!("Initializing email processor");
         
@@ -39,7 +39,7 @@ impl EmailProcessor {
             None
         };
         
-        Ok(EmailProcessor {
+        Ok(XSenseEmailProcessor {
             config,
             database: Some(database),
             slack,
@@ -49,7 +49,7 @@ impl EmailProcessor {
     pub fn new_dry_run(config: Config) -> Result<Self> {
         info!("🧪 Initializing email processor en mode dry-run (without database)");
         
-        Ok(EmailProcessor {
+        Ok(XSenseEmailProcessor {
             config,
             database: None,
             slack: None,  // Pas de notifications Slack en mode dry-run
@@ -354,7 +354,7 @@ impl EmailProcessor {
     }
     
     #[allow(dead_code)]
-    pub async fn get_recent_readings(&self, sensor_id: Option<&str>, limit: i64) -> Result<Vec<crate::temperature_extractor::TemperatureReading>> {
+    pub async fn get_recent_readings(&self, sensor_id: Option<&str>, limit: i64) -> Result<Vec<crate::xsense::TemperatureReading>> {
         if let Some(ref database) = self.database {
             database.get_latest_readings(sensor_id, limit).await
         } else {

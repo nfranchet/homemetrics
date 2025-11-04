@@ -3,20 +3,20 @@ use log::{info, debug, error};
 
 use crate::config::Config;
 use crate::gmail_client::GmailClient;
-use crate::pool_extractor;
 use crate::database::Database;
 use crate::slack_notifier::SlackNotifier;
+use super::extractor;
 
-pub struct PoolEmailProcessor {
+pub struct BlueRiotEmailProcessor {
     gmail: GmailClient,
     database: Option<Database>,
     slack: Option<SlackNotifier>,
     dry_run: bool,
 }
 
-impl PoolEmailProcessor {
+impl BlueRiotEmailProcessor {
     pub async fn new(config: &Config, dry_run: bool) -> Result<Self> {
-        info!("Initializing pool email processor (Blue Riot)");
+        info!("Initializing Blue Riot email processor");
         
         let gmail = GmailClient::new(&config.gmail).await?;
         
@@ -39,7 +39,7 @@ impl PoolEmailProcessor {
             }
         };
         
-        Ok(PoolEmailProcessor {
+        Ok(BlueRiotEmailProcessor {
             gmail,
             database,
             slack,
@@ -141,7 +141,7 @@ impl PoolEmailProcessor {
         }
         
         // Extract pool metrics from email text
-        let pool_reading = pool_extractor::extract_pool_metrics(&text_content, email.date)
+        let pool_reading = extractor::extract_pool_metrics(&text_content, email.date)
             .context("Failed to extract pool metrics from email")?;
         
         if self.dry_run {

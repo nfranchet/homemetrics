@@ -337,9 +337,16 @@ src/
 ├── config.rs            # Configuration + scheduler
 ├── imap_client.rs       # Client IMAP + archivage
 ├── attachment_parser.rs # Extraction pièces jointes
-├── temperature_extractor.rs # Parsing données température
+├── email_common.rs      # Structures communes
 ├── database.rs          # Interface TimescaleDB
-└── email_processor.rs   # Orchestrateur principal
+├── xsense/
+│   ├── mod.rs           # Module exports
+│   ├── extractor.rs     # Parsing données température (CSV/JSON/XML)
+│   └── processor.rs     # Orchestrateur X-Sense
+└── blueriot/
+    ├── mod.rs           # Module exports
+    ├── extractor.rs     # Extraction métriques piscine (regex)
+    └── processor.rs     # Orchestrateur Blue Riot
 ```
 
 ### Tests
@@ -375,17 +382,26 @@ cargo build --release
 ## Structure du projet
 
 ```
+```
 homemetrics/
 ├── src/
 │   ├── main.rs              # Point d'entrée avec arguments CLI
 │   ├── config.rs            # Configuration depuis variables d'env
 │   ├── imap_client.rs       # Client IMAP sécurisé
 │   ├── attachment_parser.rs # Extraction pièces jointes
-│   ├── temperature_extractor.rs # Parsing données température
+│   ├── email_common.rs      # Structures communes
 │   ├── database.rs          # Interface TimescaleDB
-│   └── email_processor.rs   # Orchestrateur principal
+│   ├── xsense/
+│   │   ├── mod.rs           # Module exports
+│   │   ├── extractor.rs     # Parsing données température
+│   │   └── processor.rs     # Orchestrateur X-Sense
+│   └── blueriot/
+│       ├── mod.rs           # Module exports
+│       ├── extractor.rs     # Extraction métriques piscine
+│       └── processor.rs     # Orchestrateur Blue Riot
 ├── .env.example             # Template de configuration
 ├── test.sh                  # Script de test interactif
+```
 ├── test_env.sh              # Variables d'environnement de test
 ├── init_db.sql              # Initialisation base de données
 └── data/                    # Répertoire pièces jointes (créé auto)

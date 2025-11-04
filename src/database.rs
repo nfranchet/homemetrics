@@ -3,8 +3,8 @@ use log::{info, debug, warn};
 use sqlx::{PgPool, Row};
 
 use crate::config::DatabaseConfig;
-use crate::temperature_extractor::TemperatureReading;
-use crate::pool_extractor::PoolReading;
+use crate::xsense::TemperatureReading;
+use crate::blueriot::PoolReading;
 
 pub struct Database {
     pool: PgPool,
