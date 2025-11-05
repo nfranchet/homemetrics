@@ -4,6 +4,7 @@ use log::{info, debug, warn};
 
 use crate::config::GmailConfig;
 
+#[allow(dead_code)]
 pub struct EmailInfo {
     pub subject: String,
     pub content: Vec<u8>,

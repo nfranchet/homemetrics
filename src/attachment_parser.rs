@@ -407,8 +407,8 @@ impl AttachmentParser {
         lowercase_name.ends_with(".xls")
     }
     
-
     
+    #[allow(dead_code)]
     pub fn save_attachment_to_data_dir_with_date(
         attachment: &Attachment, 
         data_dir: &str, 
@@ -433,6 +433,7 @@ impl AttachmentParser {
         Ok(file_path)
     }
     
+    #[allow(dead_code)]
     pub fn display_attachment_info(attachment: &Attachment) {
         println!("📎 Attachment: {}", attachment.filename);
         println!("   Type: {}", attachment.content_type);

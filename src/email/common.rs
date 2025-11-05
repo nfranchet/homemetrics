@@ -2,6 +2,7 @@
 use chrono::{DateTime, Utc};
 
 /// Email information retrieved from Gmail
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct EmailInfo {
     pub subject: String,
@@ -12,12 +13,14 @@ pub struct EmailInfo {
 }
 
 /// Result of email processing
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct ProcessingResult {
     pub emails_processed: usize,
     pub emails_failed: usize,
 }
 
+#[allow(dead_code)]
 impl ProcessingResult {
     pub fn new() -> Self {
         Self {

@@ -26,6 +26,7 @@ impl SlackNotifier {
     }
     
     /// Send a success notification for a processed email
+    #[allow(dead_code)]
     pub async fn notify_email_processed(
         &self,
         email_id: &str,

@@ -112,7 +112,7 @@ async fn main() -> Result<()> {
     let result = if args.dry_run {
         // Dry-run mode: no database connection
         let xsense_processor = XSenseEmailProcessor::new_dry_run(config.clone())?;
-        let mut pool_processor = BlueRiotEmailProcessor::new(&config, true).await?;
+        let pool_processor = BlueRiotEmailProcessor::new(&config, true).await?;
         
         // Process both types in parallel
         let (xsense_result, pool_result) = tokio::join!(
@@ -126,8 +126,8 @@ async fn main() -> Result<()> {
         Ok(xsense_count)
     } else {
         // Production mode: with database
-        let mut xsense_processor = XSenseEmailProcessor::new(config.clone()).await?;
-        let mut pool_processor = BlueRiotEmailProcessor::new(&config, false).await?;
+        let xsense_processor = XSenseEmailProcessor::new(config.clone()).await?;
+        let pool_processor = BlueRiotEmailProcessor::new(&config, false).await?;
         
         // Process both types in parallel
         let (xsense_result, pool_result) = tokio::join!(
@@ -179,7 +179,7 @@ async fn run_daemon_mode(config: Config, args: Args) -> Result<()> {
     info!("🚀 Daemon starting - processing emails immediately...");
     let initial_result = if args.dry_run {
         let xsense_processor = XSenseEmailProcessor::new_dry_run(config.clone())?;
-        let mut pool_processor = BlueRiotEmailProcessor::new(&config, true).await?;
+        let pool_processor = BlueRiotEmailProcessor::new(&config, true).await?;
         
         let (xsense_result, pool_result) = tokio::join!(
             xsense_processor.process_emails_dry_run(args.limit),
@@ -189,8 +189,8 @@ async fn run_daemon_mode(config: Config, args: Args) -> Result<()> {
         let _ = pool_result?; // Check for errors
         xsense_result
     } else {
-        let mut xsense_processor = XSenseEmailProcessor::new(config.clone()).await?;
-        let mut pool_processor = BlueRiotEmailProcessor::new(&config, false).await?;
+        let xsense_processor = XSenseEmailProcessor::new(config.clone()).await?;
+        let pool_processor = BlueRiotEmailProcessor::new(&config, false).await?;
         
         let (xsense_result, pool_result) = tokio::join!(
             xsense_processor.process_emails(args.limit),
@@ -251,7 +251,7 @@ async fn run_daemon_mode(config: Config, args: Args) -> Result<()> {
                         }
                     };
                     
-                    let mut pool_processor = match BlueRiotEmailProcessor::new(&config, true).await {
+                    let pool_processor = match BlueRiotEmailProcessor::new(&config, true).await {
                         Ok(p) => p,
                         Err(e) => {
                             error!("❌ Error creating pool processor: {}", e);
@@ -267,7 +267,7 @@ async fn run_daemon_mode(config: Config, args: Args) -> Result<()> {
                     let _ = pool_result; // Ignore pool result for count
                     xsense_result
                 } else {
-                    let mut xsense_processor = match XSenseEmailProcessor::new(config.clone()).await {
+                    let xsense_processor = match XSenseEmailProcessor::new(config.clone()).await {
                         Ok(p) => p,
                         Err(e) => {
                             error!("❌ Error creating X-Sense processor: {}", e);
@@ -275,7 +275,7 @@ async fn run_daemon_mode(config: Config, args: Args) -> Result<()> {
                         }
                     };
                     
-                    let mut pool_processor = match BlueRiotEmailProcessor::new(&config, false).await {
+                    let pool_processor = match BlueRiotEmailProcessor::new(&config, false).await {
                         Ok(p) => p,
                         Err(e) => {
                             error!("❌ Error creating pool processor: {}", e);

@@ -256,6 +256,7 @@ impl Database {
         Ok(())
     }
     
+    #[allow(dead_code)]
     pub async fn get_latest_readings(&self, sensor_id: Option<&str>, limit: i64) -> Result<Vec<TemperatureReading>> {
         let query = if let Some(sid) = sensor_id {
             sqlx::query(
@@ -339,6 +340,7 @@ impl Database {
         Ok(())
     }
     
+    #[allow(dead_code)]
     pub async fn close(self) -> Result<()> {
         info!("Closing database connection");
         self.pool.close().await;

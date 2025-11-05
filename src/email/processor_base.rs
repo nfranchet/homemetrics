@@ -1,5 +1,5 @@
 use anyhow::{Result, Context};
-use log::{info, debug, error, warn};
+use log::{info, error, warn};
 
 use crate::config::Config;
 use crate::gmail_client::GmailClient;
