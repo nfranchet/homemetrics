@@ -379,6 +379,42 @@ cargo build --release
 
 ## Tests & Couverture
 
+### Tests Unitaires et d'Intégration
+
+Le projet inclut plusieurs types de tests :
+
+**Tests unitaires** (toujours exécutés) :
+```bash
+# Exécuter tous les tests unitaires
+cargo test
+
+# Tests unitaires avec sortie détaillée
+cargo test -- --nocapture
+```
+
+**Tests d'intégration de la base de données** (nécessitent PostgreSQL) :
+```bash
+# 1. Configurer la base de données de test
+./scripts/setup_test_db.sh
+
+# 2. Exécuter les tests de base de données
+cargo test --test database_test -- --ignored
+
+# Ou avec variables d'environnement :
+TEST_DB_NAME=homemetrics_test TEST_DB_USERNAME=postgres TEST_DB_PASSWORD=postgres \
+  cargo test --test database_test -- --ignored
+```
+
+Les tests de base de données vérifient :
+- ✅ Connexion à la base de données
+- ✅ Sauvegarde de lectures de température
+- ✅ Détection de doublons
+- ✅ Sauvegarde de lectures de piscine (Blue Riot)
+- ✅ Gestion de capteurs multiples
+- ✅ Données partielles (valeurs NULL)
+
+### Couverture de Code
+
 Pour générer un rapport de couverture détaillé, on utilise `cargo-tarpaulin` (outil standard pour Rust).
 
 1) Installer `cargo-tarpaulin` localement (si nécessaire) :
@@ -404,6 +440,7 @@ Un workflow GitHub Actions est inclus dans `.github/workflows/coverage.yml`. Il 
 Notes:
 - `cargo-tarpaulin` est un binaire installé via `cargo install`; sur certaines plateformes il peut nécessiter des dépendances supplémentaires (libc, llvm, etc.).
 - Si vous préférez `grcov`/`kcov` ou d'autres outils, adaptez le script/CI en conséquence.
+- Les tests d'intégration de la base de données sont marqués `#[ignore]` et ne sont pas inclus dans la couverture par défaut.
 
 - ✅ Gestion des erreurs robuste
 - ✅ Prévention des doublons en base
