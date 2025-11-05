@@ -8,6 +8,7 @@ mod attachment_parser;
 mod database;
 mod slack_notifier;
 mod email_common;
+mod email_processor_base;
 
 // X-Sense temperature monitoring module
 mod xsense;
