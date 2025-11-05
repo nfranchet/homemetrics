@@ -1,4 +1,3 @@
-pub mod common;
 pub mod processor_base;
 
 // Re-export commonly used items

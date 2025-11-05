@@ -25,60 +25,6 @@ impl SlackNotifier {
         })
     }
     
-    /// Send a success notification for a processed email
-    #[allow(dead_code)]
-    pub async fn notify_email_processed(
-        &self,
-        email_id: &str,
-        email_subject: &str,
-        email_date: chrono::DateTime<chrono::Utc>,
-        readings_count: usize,
-        sensor_details: Vec<(String, usize)>,
-    ) -> Result<()> {
-        info!("Sending Slack notification for email {}", email_id);
-        
-        // Build message with Slack formatting
-        let mut message_text = format!(
-            "✅ *X-Sense email processed successfully*\n\n\
-             • Email ID: `{}`\n\
-             • Subject: {}\n\
-             • Date: {}\n\
-             • Saved readings: *{}*\n",
-            email_id,
-            email_subject,
-            email_date.format("%Y-%m-%d %H:%M:%S UTC"),
-            readings_count
-        );
-        
-        if !sensor_details.is_empty() {
-            message_text.push_str("• Sensors:\n");
-            for (sensor, count) in sensor_details {
-                message_text.push_str(&format!("  - {} ({} readings)\n", sensor, count));
-            }
-        }
-        
-        // Create message request
-        let post_chat_req = SlackApiChatPostMessageRequest::new(
-            self.channel_id.clone(),
-            SlackMessageContent::new().with_text(message_text),
-        );
-        
-        // Create session with token
-        let session = self.client.open_session(&self.token);
-        
-        // Send message
-        match session.chat_post_message(&post_chat_req).await {
-            Ok(response) => {
-                info!("✅ Slack message sent successfully: {:?}", response.ts);
-                Ok(())
-            }
-            Err(e) => {
-                error!("❌ Error sending Slack message: {}", e);
-                Err(anyhow::anyhow!("Unable to send Slack message: {}", e))
-            }
-        }
-    }
-    
     /// Send a simple text message to Slack
     pub async fn send_message(&self, text: &str) -> Result<()> {
         info!("Sending Slack message");

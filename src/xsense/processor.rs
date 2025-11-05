@@ -1,4 +1,4 @@
-use anyhow::{Result, Context};
+use anyhow::Result;
 use log::{debug, info};
 
 use crate::config::Config;
