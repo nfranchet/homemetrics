@@ -376,6 +376,35 @@ cargo build --release
 - ✅ Connexions TLS pour IMAP et base de données
 - ✅ Mots de passe via variables d'environnement
 - ✅ Validation des données d'entrée
+
+## Tests & Couverture
+
+Pour générer un rapport de couverture détaillé, on utilise `cargo-tarpaulin` (outil standard pour Rust).
+
+1) Installer `cargo-tarpaulin` localement (si nécessaire) :
+
+```bash
+cargo install cargo-tarpaulin --locked
+```
+
+2) Script helper (préféré) :
+
+```bash
+./scripts/coverage.sh
+```
+
+Le script vérifie la présence de `cargo-tarpaulin` et génère :
+- `coverage/index.html` — rapport HTML navigable
+- `coverage/coverage.xml` — rapport XML (utile pour CI / outils tiers)
+
+3) CI (GitHub Actions)
+
+Un workflow GitHub Actions est inclus dans `.github/workflows/coverage.yml`. Il installe `cargo-tarpaulin`, exécute la couverture et publie l'artefact `coverage/`.
+
+Notes:
+- `cargo-tarpaulin` est un binaire installé via `cargo install`; sur certaines plateformes il peut nécessiter des dépendances supplémentaires (libc, llvm, etc.).
+- Si vous préférez `grcov`/`kcov` ou d'autres outils, adaptez le script/CI en conséquence.
+
 - ✅ Gestion des erreurs robuste
 - ✅ Prévention des doublons en base
 

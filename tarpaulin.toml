@@ -1,0 +1,38 @@
+# Configuration pour cargo-tarpaulin (couverture de tests)
+# Documentation: https://github.com/xd009642/tarpaulin
+
+[report]
+# Génère un rapport HTML pour une visualisation détaillée
+out = ["Html", "Lcov", "Json"]
+
+[output]
+# Répertoire de sortie pour les rapports
+output-dir = "target/coverage"
+
+[run]
+# N'ignore pas les tests qui échouent
+ignore-tests = false
+
+# Types de couverture à mesurer
+count = true
+forward = true
+
+# Ignore les fichiers de test eux-mêmes
+ignore-panics = true
+
+# Timeout pour les tests (en secondes)
+timeout = 300
+
+# Verbosité
+verbose = true
+
+# Fichiers à exclure de la couverture
+exclude-files = [
+    "target/*",
+    "tests/*",
+]
+
+# Patterns à ignorer
+exclude = [
+    "^tests/.*",
+]

@@ -1,0 +1,27 @@
+[Unit]
+Description=HomeMetrics X-Sense Email Processor Daemon
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=homemetrics
+WorkingDirectory=/opt/homemetrics
+EnvironmentFile=/opt/homemetrics/.env
+ExecStart=/opt/homemetrics/homemetrics --daemon
+Restart=on-failure
+RestartSec=30s
+
+# Sécurité
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/homemetrics/data
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=homemetrics
+
+[Install]
+WantedBy=multi-user.target
