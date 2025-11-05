@@ -150,10 +150,23 @@ cargo run -- --daemon --limit 10
 
 - ✅ Le programme tourne en continu
 - ✅ Récupération automatique aux horaires configurés
+- ✅ **Rafraîchissement automatique du token Gmail** toutes les 45 minutes
 - ✅ Chaque email traité est déplacé vers `/homemetrics/xsense`
 - ✅ Les emails restent dans ce dossier et ne sont plus retraités
 - ✅ Log périodique toutes les heures pour confirmer que le daemon est actif
 - ✅ Arrêt propre avec Ctrl+C
+
+### Gestion Automatique des Tokens Gmail
+
+**Problème** : Les tokens Gmail expirent après **1 heure**.
+
+**Solution** : En mode daemon, un gestionnaire de tokens automatique :
+- 🔄 Rafraîchit le token **toutes les 45 minutes** (avant expiration)
+- ✅ Le programme peut tourner **indéfiniment** sans interruption
+- 🔐 Utilise le `refresh_token` pour générer de nouveaux `access_token`
+- 📝 Logs automatiques à chaque refresh
+
+Voir [`docs/TOKEN_REFRESH.md`](docs/TOKEN_REFRESH.md) pour les détails techniques.
 
 ### Archivage des Emails
 
