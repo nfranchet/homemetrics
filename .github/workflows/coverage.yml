@@ -23,10 +23,28 @@ jobs:
           cargo install cargo-tarpaulin --locked || true
 
       - name: Run tests with tarpaulin (XML + HTML)
+        id: coverage
         run: |
           mkdir -p coverage
-          cargo tarpaulin --out Xml --output-dir coverage || true
-          cargo tarpaulin --out Html --output-dir coverage || true
+          cargo tarpaulin --out Xml --output-dir coverage 2>&1 | tee coverage_output.txt
+          cargo tarpaulin --out Html --output-dir coverage 2>&1 | tee -a coverage_output.txt
+          
+      - name: Extract coverage percentage
+        id: extract_coverage
+        run: |
+          COVERAGE=$(grep -oP '\d+\.\d+(?=% coverage)' coverage_output.txt | head -1)
+          echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
+          echo "### 📊 Code Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Coverage report available in artifacts." >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/cobertura.xml
+          fail_ci_if_error: false
+          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
