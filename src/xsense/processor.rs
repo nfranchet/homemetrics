@@ -1,5 +1,5 @@
 use anyhow::{Result, Context};
-use log::debug;
+use log::{debug, info};
 
 use crate::config::Config;
 use crate::gmail_client::GmailClient;
@@ -121,7 +121,12 @@ impl EmailProcessingStrategy for XSenseStrategy {
                             .trim_start_matches("Subject:")
                             .trim()
                     );
-                    let _ = slack.send_message(&message).await;
+                    info!("Sending Slack notification for X-Sense readings");
+                    if let Err(e) = slack.send_message(&message).await {
+                        debug!("Failed to send Slack notification: {}", e);
+                    } else {
+                        debug!("Slack notification sent successfully");
+                    }
                 }
             }
             

@@ -1,5 +1,5 @@
 use anyhow::{Result, Context};
-use log::debug;
+use log::{debug, info};
 
 use crate::config::Config;
 use crate::gmail_client::GmailClient;
@@ -116,7 +116,12 @@ impl EmailProcessingStrategy for BlueRiotStrategy {
                             subject
                         );
                         
-                        let _ = slack.send_message(&message).await;
+                        info!("Sending Slack notification for Blue Riot reading");
+                        if let Err(e) = slack.send_message(&message).await {
+                            debug!("Failed to send Slack notification: {}", e);
+                        } else {
+                            debug!("Slack notification sent successfully");
+                        }
                     }
                 }
             }
