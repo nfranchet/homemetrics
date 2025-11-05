@@ -5,7 +5,7 @@ use crate::config::Config;
 use crate::gmail_client::GmailClient;
 use crate::database::Database;
 use crate::slack_notifier::SlackNotifier;
-use crate::email_processor_base::{EmailProcessingStrategy, BaseEmailProcessor};
+use crate::email::{EmailProcessingStrategy, BaseEmailProcessor};
 use super::extractor;
 
 /// Blue Riot specific processing strategy
