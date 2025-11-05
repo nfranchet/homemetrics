@@ -1,5 +1,15 @@
 # HomeMetrics X-Sense Email Client
 
+[![Build Status](https://github.com/nfranchet/homemetrics/workflows/homemetrics%20Build/badge.svg)](https://github.com/nfranchet/homemetrics/actions/workflows/homemetrics.yml)
+[![Coverage](https://github.com/nfranchet/homemetrics/workflows/test-coverage/badge.svg)](https://github.com/nfranchet/homemetrics/actions/workflows/coverage.yml)
+[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
+[![License](https://img.shields.io/github/license/nfranchet/homemetrics)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/nfranchet/homemetrics/releases)
+[![Last Commit](https://img.shields.io/github/last-commit/nfranchet/homemetrics)](https://github.com/nfranchet/homemetrics/commits)
+[![Issues](https://img.shields.io/github/issues/nfranchet/homemetrics)](https://github.com/nfranchet/homemetrics/issues)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-12%2B-336791.svg?logo=postgresql&logoColor=white)](https://www.postgresql.org)
+[![TimescaleDB](https://img.shields.io/badge/TimescaleDB-2.0%2B-FDB515.svg)](https://www.timescale.com)
+
 Ce projet Rust automatise la récupération et le traitement des données de température provenant des emails X-Sense.
 
 ## Fonctionnalités
