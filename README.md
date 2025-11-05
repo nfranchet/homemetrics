@@ -1,7 +1,7 @@
 # HomeMetrics X-Sense Email Client
 
 [![Build Status](https://github.com/nfranchet/homemetrics/workflows/homemetrics%20Build/badge.svg)](https://github.com/nfranchet/homemetrics/actions/workflows/homemetrics.yml)
-[![Coverage](https://github.com/nfranchet/homemetrics/workflows/test-coverage/badge.svg)](https://github.com/nfranchet/homemetrics/actions/workflows/coverage.yml)
+[![codecov](https://codecov.io/gh/nfranchet/homemetrics/branch/main/graph/badge.svg)](https://codecov.io/gh/nfranchet/homemetrics)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/github/license/nfranchet/homemetrics)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/nfranchet/homemetrics/releases)
@@ -425,27 +425,39 @@ Les tests de base de données vérifient :
 
 ### Couverture de Code
 
-Pour générer un rapport de couverture détaillé, on utilise `cargo-tarpaulin` (outil standard pour Rust).
+Le projet utilise `cargo-tarpaulin` pour mesurer la couverture de code. Le badge [![codecov](https://codecov.io/gh/nfranchet/homemetrics/branch/main/graph/badge.svg)](https://codecov.io/gh/nfranchet/homemetrics) affiche le pourcentage en temps réel.
 
-1) Installer `cargo-tarpaulin` localement (si nécessaire) :
+**Voir la couverture localement :**
 
 ```bash
+# Installation (si nécessaire)
 cargo install cargo-tarpaulin --locked
-```
 
-2) Script helper (préféré) :
+# Voir le pourcentage de couverture
+./scripts/show_coverage.sh
 
-```bash
+# Ou générer le rapport complet
 ./scripts/coverage.sh
 ```
 
+Le script `show_coverage.sh` affiche :
+- 📊 Pourcentage de couverture global
+- 📈 Couverture par module
+- 🎨 Badge coloré selon le niveau
+
+**Voir la couverture sur GitHub :**
+
+1. **Badge dans le README** : Le badge Codecov affiche le pourcentage exact et se met à jour automatiquement
+2. **Actions Summary** : Chaque run du workflow affiche `📊 Code Coverage: X.XX%` dans le résumé
+3. **Codecov.io** : Graphiques détaillés, tendances, et analyse par fichier sur https://codecov.io/gh/nfranchet/homemetrics
+
+**Configuration Codecov** (première fois) :
+
+Pour activer le badge avec pourcentage dynamique, voir [`docs/COVERAGE_SETUP.md`](docs/COVERAGE_SETUP.md) pour les instructions complètes.
+
 Le script vérifie la présence de `cargo-tarpaulin` et génère :
-- `coverage/index.html` — rapport HTML navigable
-- `coverage/coverage.xml` — rapport XML (utile pour CI / outils tiers)
-
-3) CI (GitHub Actions)
-
-Un workflow GitHub Actions est inclus dans `.github/workflows/coverage.yml`. Il installe `cargo-tarpaulin`, exécute la couverture et publie l'artefact `coverage/`.
+- `coverage/tarpaulin-report.html` — rapport HTML navigable
+- `coverage/cobertura.xml` — rapport XML (uploadé vers Codecov)
 
 Notes:
 - `cargo-tarpaulin` est un binaire installé via `cargo install`; sur certaines plateformes il peut nécessiter des dépendances supplémentaires (libc, llvm, etc.).
