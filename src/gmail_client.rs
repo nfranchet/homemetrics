@@ -1,6 +1,8 @@
 use anyhow::{Result, Context};
 use google_gmail1::{Gmail, hyper, hyper_rustls, oauth2};
 use log::{info, debug, warn};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use crate::config::GmailConfig;
 
@@ -12,6 +14,7 @@ pub struct EmailInfo {
 
 pub struct GmailClient {
     hub: Gmail<hyper_rustls::HttpsConnector<hyper::client::HttpConnector>>,
+    auth: Arc<Mutex<oauth2::authenticator::Authenticator<hyper_rustls::HttpsConnector<hyper::client::HttpConnector>>>>,
 }
 
 impl GmailClient {
@@ -35,6 +38,8 @@ impl GmailClient {
         .await
         .context("Unable to create OAuth2 authenticator")?;
         
+        let auth_arc = Arc::new(Mutex::new(auth));
+        
         // Create HTTP client
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_native_roots()?
@@ -45,11 +50,37 @@ impl GmailClient {
         let client = hyper::Client::builder().build(connector);
         
         // Create Gmail hub with appropriate scopes
-        let hub = Gmail::new(client, auth);
+        let hub = Gmail::new(client, auth_arc.lock().await.clone());
         
         info!("✅ Gmail API connection established successfully");
         
-        Ok(GmailClient { hub })
+        Ok(GmailClient { 
+            hub,
+            auth: auth_arc,
+        })
+    }
+    
+    /// Force refresh the OAuth2 token
+    /// This should be called periodically (e.g., every 45 minutes) to ensure the token stays valid
+    /// Google tokens expire after 1 hour, so refreshing at 45min provides a safety margin
+    pub async fn refresh_token(&self) -> Result<()> {
+        info!("🔄 Forcing OAuth2 token refresh...");
+        
+        let auth = self.auth.lock().await;
+        
+        // Get the current token - this will automatically refresh if needed
+        let scopes = &[google_gmail1::api::Scope::Modify.as_ref()];
+        
+        match auth.token(scopes).await {
+            Ok(_token) => {
+                info!("✅ Token refreshed successfully");
+                Ok(())
+            }
+            Err(e) => {
+                warn!("⚠️  Error refreshing token: {}", e);
+                Err(anyhow::anyhow!("Token refresh failed: {}", e))
+            }
+        }
     }
     
     pub async fn search_xsense_emails(&self) -> Result<Vec<String>> {

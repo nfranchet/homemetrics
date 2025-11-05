@@ -7,6 +7,7 @@ pub mod database;
 pub mod gmail_client;
 pub mod slack_notifier;
 pub mod email;
+pub mod token_refresh;
 
 // X-Sense temperature monitoring module
 pub mod xsense;

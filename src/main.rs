@@ -8,6 +8,7 @@ mod attachment_parser;
 mod database;
 mod slack_notifier;
 mod email;
+mod token_refresh;
 
 // X-Sense temperature monitoring module
 mod xsense;
@@ -161,6 +162,8 @@ async fn main() -> Result<()> {
 async fn run_daemon_mode(config: Config, args: Args) -> Result<()> {
     use tokio_cron_scheduler::{JobScheduler, Job};
     use chrono::{Local, Timelike};
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
     
     // Check that the scheduler is enabled in configuration
     if !config.scheduler.enabled {
@@ -174,6 +177,22 @@ async fn run_daemon_mode(config: Config, args: Args) -> Result<()> {
     }
     
     info!("📅 Configured retrieval times: {:?}", config.scheduler.schedule_times);
+    
+    // Create a shared GmailClient for token refresh management
+    // This client will be used by the token refresh manager to keep tokens alive
+    info!("🔐 Initializing Gmail client with automatic token refresh...");
+    let gmail_client = gmail_client::GmailClient::new(&config.gmail).await?;
+    let gmail_client_arc = Arc::new(Mutex::new(gmail_client));
+    
+    // Start the token refresh manager (refreshes every 45 minutes)
+    // Google tokens expire after 60 minutes, so 45 minutes provides a safety margin
+    info!("🔄 Starting automatic token refresh (every 45 minutes)");
+    let _token_refresh_handle = token_refresh::start_token_refresh(
+        gmail_client_arc.clone(),
+        Some(45) // Refresh every 45 minutes
+    );
+    
+    info!("✅ Token refresh manager started");
     
     // First, process emails immediately at startup
     info!("🚀 Daemon starting - processing emails immediately...");
