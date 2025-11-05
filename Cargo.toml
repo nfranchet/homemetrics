@@ -63,3 +63,7 @@ tokio-native-tls = "0.3.1"
 
 # Notifications Slack
 slack-morphism = { version = "2.4", features = ["hyper"] }
+
+[dev-dependencies]
+# Testing utilities
+tokio-test = "0.4"

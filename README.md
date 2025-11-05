@@ -337,9 +337,16 @@ src/
 ├── config.rs            # Configuration + scheduler
 ├── imap_client.rs       # Client IMAP + archivage
 ├── attachment_parser.rs # Extraction pièces jointes
-├── temperature_extractor.rs # Parsing données température
+├── email_common.rs      # Structures communes
 ├── database.rs          # Interface TimescaleDB
-└── email_processor.rs   # Orchestrateur principal
+├── xsense/
+│   ├── mod.rs           # Module exports
+│   ├── extractor.rs     # Parsing données température (CSV/JSON/XML)
+│   └── processor.rs     # Orchestrateur X-Sense
+└── blueriot/
+    ├── mod.rs           # Module exports
+    ├── extractor.rs     # Extraction métriques piscine (regex)
+    └── processor.rs     # Orchestrateur Blue Riot
 ```
 
 ### Tests
@@ -369,11 +376,78 @@ cargo build --release
 - ✅ Connexions TLS pour IMAP et base de données
 - ✅ Mots de passe via variables d'environnement
 - ✅ Validation des données d'entrée
+
+## Tests & Couverture
+
+### Tests Unitaires et d'Intégration
+
+Le projet inclut plusieurs types de tests :
+
+**Tests unitaires** (toujours exécutés) :
+```bash
+# Exécuter tous les tests unitaires
+cargo test
+
+# Tests unitaires avec sortie détaillée
+cargo test -- --nocapture
+```
+
+**Tests d'intégration de la base de données** (nécessitent PostgreSQL) :
+```bash
+# 1. Configurer la base de données de test
+./scripts/setup_test_db.sh
+
+# 2. Exécuter les tests de base de données
+cargo test --test database_test -- --ignored
+
+# Ou avec variables d'environnement :
+TEST_DB_NAME=homemetrics_test TEST_DB_USERNAME=postgres TEST_DB_PASSWORD=postgres \
+  cargo test --test database_test -- --ignored
+```
+
+Les tests de base de données vérifient :
+- ✅ Connexion à la base de données
+- ✅ Sauvegarde de lectures de température
+- ✅ Détection de doublons
+- ✅ Sauvegarde de lectures de piscine (Blue Riot)
+- ✅ Gestion de capteurs multiples
+- ✅ Données partielles (valeurs NULL)
+
+### Couverture de Code
+
+Pour générer un rapport de couverture détaillé, on utilise `cargo-tarpaulin` (outil standard pour Rust).
+
+1) Installer `cargo-tarpaulin` localement (si nécessaire) :
+
+```bash
+cargo install cargo-tarpaulin --locked
+```
+
+2) Script helper (préféré) :
+
+```bash
+./scripts/coverage.sh
+```
+
+Le script vérifie la présence de `cargo-tarpaulin` et génère :
+- `coverage/index.html` — rapport HTML navigable
+- `coverage/coverage.xml` — rapport XML (utile pour CI / outils tiers)
+
+3) CI (GitHub Actions)
+
+Un workflow GitHub Actions est inclus dans `.github/workflows/coverage.yml`. Il installe `cargo-tarpaulin`, exécute la couverture et publie l'artefact `coverage/`.
+
+Notes:
+- `cargo-tarpaulin` est un binaire installé via `cargo install`; sur certaines plateformes il peut nécessiter des dépendances supplémentaires (libc, llvm, etc.).
+- Si vous préférez `grcov`/`kcov` ou d'autres outils, adaptez le script/CI en conséquence.
+- Les tests d'intégration de la base de données sont marqués `#[ignore]` et ne sont pas inclus dans la couverture par défaut.
+
 - ✅ Gestion des erreurs robuste
 - ✅ Prévention des doublons en base
 
 ## Structure du projet
 
+```
 ```
 homemetrics/
 ├── src/
@@ -381,11 +455,19 @@ homemetrics/
 │   ├── config.rs            # Configuration depuis variables d'env
 │   ├── imap_client.rs       # Client IMAP sécurisé
 │   ├── attachment_parser.rs # Extraction pièces jointes
-│   ├── temperature_extractor.rs # Parsing données température
+│   ├── email_common.rs      # Structures communes
 │   ├── database.rs          # Interface TimescaleDB
-│   └── email_processor.rs   # Orchestrateur principal
+│   ├── xsense/
+│   │   ├── mod.rs           # Module exports
+│   │   ├── extractor.rs     # Parsing données température
+│   │   └── processor.rs     # Orchestrateur X-Sense
+│   └── blueriot/
+│       ├── mod.rs           # Module exports
+│       ├── extractor.rs     # Extraction métriques piscine
+│       └── processor.rs     # Orchestrateur Blue Riot
 ├── .env.example             # Template de configuration
 ├── test.sh                  # Script de test interactif
+```
 ├── test_env.sh              # Variables d'environnement de test
 ├── init_db.sql              # Initialisation base de données
 └── data/                    # Répertoire pièces jointes (créé auto)

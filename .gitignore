@@ -34,4 +34,4 @@ data/*
 
 # Not needed anymore
 deploy_daemon.sh
-homemetrics.service
+homemetrics.service/coverage

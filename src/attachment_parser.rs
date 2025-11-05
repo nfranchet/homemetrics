@@ -1,8 +1,5 @@
-use anyhow::{Result, Context};
+use anyhow::Result;
 use log::{info, debug};
-use std::path::PathBuf;
-use std::fs;
-use chrono::Utc;
 use mail_parser::{MessageParser, MimeHeaders};
 use base64::{Engine as _, engine::general_purpose};
 
@@ -407,52 +404,5 @@ impl AttachmentParser {
         lowercase_name.ends_with(".xls")
     }
     
-
     
-    pub fn save_attachment_to_data_dir_with_date(
-        attachment: &Attachment, 
-        data_dir: &str, 
-        email_date: Option<chrono::DateTime<Utc>>
-    ) -> Result<PathBuf> {
-        // Create data directory if it does not exist
-        fs::create_dir_all(data_dir)
-            .context("Unable to create data directory")?;
-        
-        // Use email date if provided, otherwise current date
-        let date_to_use = email_date.unwrap_or_else(Utc::now);
-        let date_prefix = date_to_use.format("%Y%m%d_%H%M%S");
-        let filename = format!("{}_{}", date_prefix, attachment.filename);
-        let file_path = PathBuf::from(data_dir).join(&filename);
-        
-        // Save content
-        fs::write(&file_path, &attachment.content)
-            .context("Unable to write attachment")?;
-        
-        info!("Attachment saved: {:?}", file_path);
-        
-        Ok(file_path)
-    }
-    
-    pub fn display_attachment_info(attachment: &Attachment) {
-        println!("📎 Attachment: {}", attachment.filename);
-        println!("   Type: {}", attachment.content_type);
-        println!("   Size: {} bytes", attachment.content.len());
-        
-        // Display content preview if text
-        if attachment.content_type.starts_with("text/") || 
-           attachment.filename.to_lowercase().ends_with(".csv") ||
-           attachment.filename.to_lowercase().ends_with(".json") ||
-           attachment.filename.to_lowercase().ends_with(".txt") {
-            
-            if let Ok(content_str) = std::str::from_utf8(&attachment.content) {
-                let preview = if content_str.len() > 500 {
-                    format!("{}...", &content_str[..500])
-                } else {
-                    content_str.to_string()
-                };
-                println!("   Preview:\n{}", preview);
-            }
-        }
-        println!("   {}", "─".repeat(80));
-    }
 }

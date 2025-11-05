@@ -1,10 +1,10 @@
 use anyhow::{Result, Context};
 use log::{info, debug, warn};
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 
 use crate::config::DatabaseConfig;
-use crate::temperature_extractor::TemperatureReading;
-use crate::pool_extractor::PoolReading;
+use crate::xsense::TemperatureReading;
+use crate::blueriot::PoolReading;
 
 pub struct Database {
     pool: PgPool,
@@ -256,49 +256,6 @@ impl Database {
         Ok(())
     }
     
-    pub async fn get_latest_readings(&self, sensor_id: Option<&str>, limit: i64) -> Result<Vec<TemperatureReading>> {
-        let query = if let Some(sid) = sensor_id {
-            sqlx::query(
-                r#"
-                SELECT sensor_id, timestamp, temperature, humidity, location
-                FROM temperature_readings 
-                WHERE sensor_id = $1
-                ORDER BY timestamp DESC 
-                LIMIT $2
-                "#
-            )
-            .bind(sid)
-            .bind(limit)
-        } else {
-            sqlx::query(
-                r#"
-                SELECT sensor_id, timestamp, temperature, humidity, location
-                FROM temperature_readings 
-                ORDER BY timestamp DESC 
-                LIMIT $1
-                "#
-            )
-            .bind(limit)
-        };
-        
-        let rows = query.fetch_all(&self.pool)
-            .await
-            .context("Error retrieving readings")?;
-        
-        let mut readings = Vec::new();
-        for row in rows {
-            readings.push(TemperatureReading {
-                sensor_id: row.get("sensor_id"),
-                timestamp: row.get("timestamp"),
-                temperature: row.get("temperature"),
-                humidity: row.get("humidity"),
-                location: row.get("location"),
-            });
-        }
-        
-        Ok(readings)
-    }
-    
     /// Save a pool reading to the database
     pub async fn save_pool_reading(&self, reading: &PoolReading, email_id: &str) -> Result<()> {
         debug!("Saving pool reading: temp={:?}°C, pH={:?}, ORP={:?} mV", 
@@ -339,9 +296,4 @@ impl Database {
         Ok(())
     }
     
-    pub async fn close(self) -> Result<()> {
-        info!("Closing database connection");
-        self.pool.close().await;
-        Ok(())
-    }
 }

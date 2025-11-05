@@ -5,11 +5,9 @@ use log::{info, debug, warn};
 use crate::config::GmailConfig;
 
 pub struct EmailInfo {
-    pub subject: String,
     pub content: Vec<u8>,
     pub date: chrono::DateTime<chrono::Utc>,
     pub headers: String,
-    pub id: String,
 }
 
 pub struct GmailClient {
@@ -249,11 +247,9 @@ impl GmailClient {
         let headers = format!("De: {}\nObjet: {}", from, subject);
         
         Ok(EmailInfo {
-            subject,
             content: raw_bytes,
             date: email_date,
             headers,
-            id: message_id.to_string(),
         })
     }
     

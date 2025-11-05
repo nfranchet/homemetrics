@@ -47,7 +47,7 @@ impl TemperatureExtractor {
         }
     }
     
-    fn extract_sensor_name(filename: &str) -> Result<String> {
+    pub fn extract_sensor_name(filename: &str) -> Result<String> {
         // Expected format: "Thermo-{sensor_name}_Export data_{date}.csv"
         // Examples: "Thermo-cabane_...", "Thermo-patio_...", "Thermo-poolhouse_..."
         
@@ -66,7 +66,7 @@ impl TemperatureExtractor {
         Ok(name.to_string())
     }
     
-    fn extract_from_xsense_csv(content: &[u8], sensor_name: &str) -> Result<Vec<TemperatureReading>> {
+    pub fn extract_from_xsense_csv(content: &[u8], sensor_name: &str) -> Result<Vec<TemperatureReading>> {
         debug!("Extracting from X-Sense CSV file for sensor: {}", sensor_name);
         
         // Try UTF-8 first, then other encodings
