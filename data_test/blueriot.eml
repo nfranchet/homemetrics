@@ -1,0 +1,81 @@
+Delivered-To: nicolas.franchet@gmail.com
+Received: by 2002:a05:622a:2c3:b0:4b0:6936:34e8 with SMTP id a3csp1073178qtx;
+        Mon, 1 Sep 2025 03:43:28 -0700 (PDT)
+X-Google-Smtp-Source: AGHT+IEvc8/9CdcfoCHl+ttzXuW3svq+RTY1cI3y5NzxTKx+DSQ9UM0KNcYpByfeEe/XrHzjBlQP
+X-Received: by 2002:a17:907:86a6:b0:afe:bdcb:9e62 with SMTP id a640c23a62f3a-b01d973074dmr754900466b.33.1756723408692;
+        Mon, 01 Sep 2025 03:43:28 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1756723408; cv=none;
+        d=google.com; s=arc-20240605;
+        b=fFqVzOlMeK/KaYMnLsKlarAhCzit+5WVm6FXwtMWuFBsUteSpNUmiKrNKKiqcUaIKP
+         GR7jc23Vzj/FTfJckTn5g/P/ZsrtkwaSJwLpxbNN61zxTOyuz7s6YhCm3+BIF4bOt0Hc
+         w/j2M3Ym7m/7WeEf2sFAKZ5SxpPq7PB3rvg63LoxJ6akFDqCFoWXg6LXCrUXYAjaBrcn
+         phKJTt/e0ZEXu6DXHxOKxn6F9vsK4uR/q6nzAks9L8EAQgbcgSV+DE2H5KVX54Gw05Q7
+         w7ySMwIhFqyWEPPFcl2ktWs1Yia6swFCEu5z4xMf+d/i4qGzLMB10qMMgIs/8Uvyi160
+         5wbg==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=feedback-id:date:message-id:content-transfer-encoding:mime-version
+         :subject:to:reply-to:from:dkim-signature:dkim-signature;
+        bh=QEkXQWe/lLbLpt+FUhXhuEJlmtzYF4bwxv0pHzLlAQQ=;
+        fh=5cY328aa4hdttWzG8XsLMcleejXn+ToRtmaHrNpA9wQ=;
+        b=iqA/a28sRO6gelcGLmrIo5QDzdZANpNkIToY0MttTkVMU04er86CxVmPbr5Yf1rrN2
+         Q36OGItpS53VIU8z2JwBr/mYEWOc8VS9nFmdSRsnMu/mHWEKm0VcBF38OW8n6Cmrq0JH
+         stCdbKQwLGfzKSuBtD8i94GwGY1iPtXTuXhpyTopzXkJ0yfgzWRTinhFjvF8XZPYaKHm
+         tJlImMqmdTKPIKbmzlE9JlIdgDwKbfZy9ZiXn6WJUcJw93061163aUOy/xGXXhk9BWEO
+         +PXKGQGBmR5DLVP6iWllYjDgHM+sjuQv16TdfVh3P70UkmCCJ+BS+6VFMXdYtyGjWEdD
+         29ew==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@riiotlabs.com header.s=jejbuvjeprge5czef32uktmezmjqextr header.b=HHPhgAn+;
+       dkim=pass header.i=@amazonses.com header.s=ihchhvubuqgjsxyuhssfvqohv7z3u4hn header.b="JbTe/t/k";
+       spf=pass (google.com: domain of 0102019904dfeb61-656c2877-47ef-4fc5-a12d-a3172fab0326-000000@eu-west-1.amazonses.com designates 54.240.7.20 as permitted sender) smtp.mailfrom=0102019904dfeb61-656c2877-47ef-4fc5-a12d-a3172fab0326-000000@eu-west-1.amazonses.com;
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=riiotlabs.com
+Return-Path: <0102019904dfeb61-656c2877-47ef-4fc5-a12d-a3172fab0326-000000@eu-west-1.amazonses.com>
+Received: from a7-20.smtp-out.eu-west-1.amazonses.com (a7-20.smtp-out.eu-west-1.amazonses.com. [54.240.7.20])
+        by mx.google.com with ESMTPS id a640c23a62f3a-b0435df278asi88863066b.946.2025.09.01.03.43.28
+        (version=TLS1_3 cipher=TLS_AES_128_GCM_SHA256 bits=128/128);
+        Mon, 01 Sep 2025 03:43:28 -0700 (PDT)
+Received-SPF: pass (google.com: domain of 0102019904dfeb61-656c2877-47ef-4fc5-a12d-a3172fab0326-000000@eu-west-1.amazonses.com designates 54.240.7.20 as permitted sender) client-ip=54.240.7.20;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@riiotlabs.com header.s=jejbuvjeprge5czef32uktmezmjqextr header.b=HHPhgAn+;
+       dkim=pass header.i=@amazonses.com header.s=ihchhvubuqgjsxyuhssfvqohv7z3u4hn header.b="JbTe/t/k";
+       spf=pass (google.com: domain of 0102019904dfeb61-656c2877-47ef-4fc5-a12d-a3172fab0326-000000@eu-west-1.amazonses.com designates 54.240.7.20 as permitted sender) smtp.mailfrom=0102019904dfeb61-656c2877-47ef-4fc5-a12d-a3172fab0326-000000@eu-west-1.amazonses.com;
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=riiotlabs.com
+DKIM-Signature: v=1; a=rsa-sha256; q=dns/txt; c=relaxed/simple;
+	s=jejbuvjeprge5czef32uktmezmjqextr; d=riiotlabs.com; t=1756723408;
+	h=From:Reply-To:To:Subject:MIME-Version:Content-Type:Content-Transfer-Encoding:Message-ID:Date;
+	bh=KGaLOxpaWMurgPGKrYHlPkc7TJnbkVc+iOlgEqtcjfA=;
+	b=HHPhgAn+Z5eHKtnsDrJtRbDsPSlRBircWxKZ1G7avgYRclKqsHb+1jaBppxIj9yK
+	/IupqXG2gU1qH5OCmiBsmMN4r0+qw9ETnZzTQdIcGhvkACvFRpcEyx8B3lU4WJ3vzas
+	QqIQbrdD6V9guB3XwezZ0KFaJhxyXMEDtO7U54VYg5WTQ+01PwcM6cMGzBcQR7CXQrz
+	zWqxDY+QDAoFJKvc4V/16AzhB0xH3F3OPlzdb1bZhmZdoIQSkoBTU/HXJxa1iWOD+8x
+	qCoyZQujs4cHLZps+2/GPDv2LJ+rLmgIZnPBSDK5ZyUPxi0aN2nDQO2qfwt0hp2iF6T
+	TIGUOlmP+g==
+DKIM-Signature: v=1; a=rsa-sha256; q=dns/txt; c=relaxed/simple;
+	s=ihchhvubuqgjsxyuhssfvqohv7z3u4hn; d=amazonses.com; t=1756723408;
+	h=From:Reply-To:To:Subject:MIME-Version:Content-Type:Content-Transfer-Encoding:Message-ID:Date:Feedback-ID;
+	bh=KGaLOxpaWMurgPGKrYHlPkc7TJnbkVc+iOlgEqtcjfA=;
+	b=JbTe/t/kZ7iop0sL2VJZqD7MLbnZ29UWM2YNNnHOemd+MIHTJzj5K522oOf0+gw0
+	Cf9tFhvN9Y3dHoFQlZLiozfrhL9AlsRZII2/3zVdIJuU7PG4wcMRcY2DPGTOFhIWj0o
+	PJaD7zeMfiH3K8ySpM/tYl3BX1qeH7cZkgOy9LRg=
+From: Blue Connect <blue@riiotlabs.com>
+Reply-To: noreply@riiotlabs.com
+To: nicolas.franchet@gmail.com
+Subject: Piscine Pibrac : nouvelle mesure
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+Message-ID: <0102019904dfeb61-656c2877-47ef-4fc5-a12d-a3172fab0326-000000@eu-west-1.amazonses.com>
+Date: Mon, 1 Sep 2025 10:43:27 +0000
+Feedback-ID: ::1.eu-west-1.KUyZzWE/oy/Z95uqpFTgz6BvjC6ZoPPCbqXHk/yvJAM=:AmazonSES
+X-SES-Outgoing: 2025.09.01-54.240.7.20
+
+<!DOCTYPE html><html lang=3D"fr"><head>    <meta charset=3D"UTF-8"></head><=
+body style=3D"font-family: Avenir, Helvetica Neue, Helvetica, Arial, sans-s=
+erif;font-weight: 300;font-style: normal;font-size: 1.0rem;line-height: 1.2=
+;color: #6f8595;margin-top: 20px;margin-left: 1em;margin-right: 1em;">    <=
+p>Bonjour Nicolas Franchet,</p><p>Voici la derni=C3=A8re mesure prise par B=
+lue Connect :</p><table>    <tr>        <td>Temp=C3=A9rature :</td>        =
+<td>24 =C2=B0C</td>    </tr>    <tr>        <td>pH :</td>        <td>6.9</t=
+d>    </tr>    <tr>        <td>ORP :</td>        <td>708 mV</td>    </tr>  =
+      </table><br/><p>Bien cordialement,</p><p>L'=C3=A9quipe Blue Connect -=
+ Fluidra</p></body></html>

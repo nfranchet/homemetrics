@@ -2,5 +2,5 @@
 pub mod extractor;
 pub mod processor;
 
-pub use extractor::TemperatureReading;
+pub use extractor::{TemperatureReading, TemperatureExtractor};
 pub use processor::XSenseEmailProcessor;
