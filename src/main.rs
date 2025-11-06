@@ -33,6 +33,10 @@ struct Args {
     #[arg(long)]
     daemon: bool,
     
+    /// Token refresh interval in minutes for daemon mode (default: 45)
+    #[arg(long, default_value = "45")]
+    token_refresh_interval: u64,
+    
     /// Attachment save directory (default: ./data)
     #[arg(short = 'o', long, default_value = "./data")]
     data_dir: String,
@@ -44,6 +48,10 @@ struct Args {
     /// List all Gmail labels with their IDs
     #[arg(long)]
     list_labels: bool,
+    
+    /// Refresh Gmail OAuth2 token and exit
+    #[arg(long)]
+    refresh_token: bool,
     
     /// Check configuration without connecting
     #[arg(long)]
@@ -77,6 +85,18 @@ async fn main() -> Result<()> {
         println!("📋 Listing Gmail labels...\n");
         let gmail = GmailClient::new(&config.gmail).await?;
         gmail.list_labels().await?;
+        return Ok(());
+    }
+    
+    // If requested, refresh token and exit
+    if args.refresh_token {
+        use gmail_client::GmailClient;
+        
+        println!("🔄 Refreshing Gmail OAuth2 token...\n");
+        let gmail = GmailClient::new(&config.gmail).await?;
+        gmail.refresh_token().await?;
+        println!("✅ Token refreshed successfully and persisted to cache");
+        println!("💾 Token cache: {}", config.gmail.token_cache_path);
         return Ok(());
     }
     
@@ -186,10 +206,10 @@ async fn run_daemon_mode(config: Config, args: Args) -> Result<()> {
     
     // Start the token refresh manager (refreshes every 45 minutes)
     // Google tokens expire after 60 minutes, so 45 minutes provides a safety margin
-    info!("🔄 Starting automatic token refresh (every 45 minutes)");
+    info!("🔄 Starting automatic token refresh (every {} minutes)", args.token_refresh_interval);
     let _token_refresh_handle = token_refresh::start_token_refresh(
         gmail_client_arc.clone(),
-        Some(45) // Refresh every 45 minutes
+        Some(args.token_refresh_interval)
     );
     
     info!("✅ Token refresh manager started");
