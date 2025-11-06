@@ -45,6 +45,8 @@ fn test_extract_from_xsense_email() {
 #[test]
 fn test_extract_sensor_name() {
     // Test extracting sensor name from actual X-Sense filename format
+    
+    // Format with "Thermo-" prefix
     assert_eq!(
         TemperatureExtractor::extract_sensor_name("Thermo-cabane_Exporter les données_20251104.csv").unwrap(),
         "cabane"
@@ -53,6 +55,23 @@ fn test_extract_sensor_name() {
     assert_eq!(
         TemperatureExtractor::extract_sensor_name("Thermo-patio_Exporter les données_20251105.csv").unwrap(),
         "patio"
+    );
+    
+    // Format without "Thermo-" prefix (French format)
+    assert_eq!(
+        TemperatureExtractor::extract_sensor_name("Bureau_Exporter les données_20251031.csv").unwrap(),
+        "Bureau"
+    );
+    
+    assert_eq!(
+        TemperatureExtractor::extract_sensor_name("Salon_Exporter les données_20251102.csv").unwrap(),
+        "Salon"
+    );
+    
+    // English format variation
+    assert_eq!(
+        TemperatureExtractor::extract_sensor_name("Kitchen_Export data_20251103.csv").unwrap(),
+        "Kitchen"
     );
 }
 
