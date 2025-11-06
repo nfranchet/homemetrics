@@ -10,17 +10,67 @@ En mode daemon, le programme peut tourner pendant des jours/semaines. Sans rafra
 
 ### Architecture
 
-Le système utilise **deux mécanismes complémentaires** :
+Le système utilise le **mécanisme automatique de yup-oauth2** avec un **appel API périodique** pour garantir que le token reste valide.
+
+**Comment ça fonctionne** :
 
 1. **Rafraîchissement automatique par yup-oauth2** :
    - La bibliothèque `yup-oauth2` détecte automatiquement les tokens expirés
    - Elle utilise le `refresh_token` pour obtenir un nouvel `access_token`
-   - Fonctionne **à la demande** (lorsqu'une requête est faite)
+   - Sauvegarde automatiquement dans `gmail-token-cache.json` (via `persist_tokens_to_disk()`)
 
-2. **Rafraîchissement proactif (nouveau)** :
+2. **Appel API périodique (toutes les 45 minutes)** :
    - Un gestionnaire de tâche en arrière-plan (`TokenRefreshManager`)
-   - Rafraîchit le token **toutes les 45 minutes**
-   - Empêche l'expiration avant qu'elle ne se produise
+   - Fait un appel API léger (`get_profile()`) toutes les 45 minutes
+   - Déclenche la vérification automatique de yup-oauth2
+   - Si le token est proche de l'expiration, yup-oauth2 le rafraîchit automatiquement
+
+### ⚠️ Important : Comportement du Cache
+
+**Le fichier `gmail-token-cache.json` n'est PAS mis à jour à chaque appel `refresh_token()` !**
+
+Il est mis à jour **uniquement quand un vrai refresh se produit** :
+- ✅ Token obtenu lors de l'OAuth2 flow initial
+- ✅ Token rafraîchi automatiquement par yup-oauth2 (quand proche de l'expiration)
+- ❌ **PAS** lors d'un appel API si le token est encore valide (>5 min de vie)
+
+**Ceci est normal et attendu !** Le cache ne change que lors d'un vrai refresh.
+
+### Chronologie Typique
+
+```
+T=0min    : Démarrage daemon, token valide jusqu'à T=60min
+            📁 Cache: expires_at = [2025,310,11,24,20,...]  (11:24 UTC)
+            
+T=45min   : 🔄 refresh_token() appelé (appel périodique)
+            → get_profile() exécuté
+            → yup-oauth2 vérifie : token valide encore 15min
+            ✅ Appel API réussi
+            ❌ PAS de refresh (token encore bon pour 15min)
+            📁 Cache INCHANGÉ (normal !)
+            
+T=56min   : 📧 Traitement emails programmé
+            → messages_list() exécuté
+            → yup-oauth2 vérifie : token expire dans 4min
+            🔄 Refresh automatique déclenché !
+            ✅ Nouveau access_token obtenu
+            📁 Cache MIS À JOUR: expires_at = [2025,310,12,56,...]  (12:56 UTC)
+            ✅ Appels API réussis
+            
+T=101min  : 🔄 refresh_token() appelé (appel périodique)
+            → get_profile() exécuté
+            → yup-oauth2 vérifie : token valide encore 15min
+            ✅ Appel API réussi
+            ❌ PAS de refresh (token encore bon)
+            📁 Cache INCHANGÉ (normal !)
+            
+T=112min  : 📧 Traitement emails programmé
+            → yup-oauth2 vérifie : token expire dans 4min
+            🔄 Refresh automatique déclenché !
+            📁 Cache MIS À JOUR: expires_at = [2025,310,13,52,...]  (13:52 UTC)
+```
+
+**Conclusion** : Le cache est mis à jour environ **toutes les heures** (quand le vrai refresh se produit), pas toutes les 45 minutes.
 
 ### Fonctionnement du Token Refresh Manager
 
@@ -53,18 +103,29 @@ Boucle infinie :                              │
 
 ### Code Key Points
 
-**1. GmailClient partagé** (`src/gmail_client.rs`) :
+**1. GmailClient avec refresh explicite** (`src/gmail_client.rs`) :
 ```rust
 pub struct GmailClient {
     hub: Gmail<...>,
-    auth: Arc<Mutex<Authenticator>>,  // ← Partagé entre threads
+    auth: Arc<Mutex<Authenticator>>,  // ← Référence à l'authenticator pour refresh
 }
 
 pub async fn refresh_token(&self) -> Result<()> {
-    // Force un refresh en appelant auth.token()
-    // yup-oauth2 gère automatiquement le refresh si nécessaire
+    // Force le refresh en appelant directement auth.token()
+    // yup-oauth2 vérifie l'expiration et rafraîchit si nécessaire
+    let auth = self.auth.lock().await;
+    let scopes = &[Scope::Modify.as_ref()];
+    
+    auth.token(scopes).await?;  // ← Force la vérification et le refresh
+    // Le token est automatiquement persisté dans gmail-token-cache.json
+    Ok(())
 }
 ```
+
+**Différence clé** : Appeler `auth.token()` directement force yup-oauth2 à :
+1. Vérifier si le token est expiré ou proche de l'expiration
+2. Utiliser le `refresh_token` pour obtenir un nouveau `access_token` si nécessaire
+3. **Persister le nouveau token dans le cache** automatiquement
 
 **2. TokenRefreshManager** (`src/token_refresh.rs`) :
 ```rust

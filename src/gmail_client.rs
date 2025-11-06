@@ -1,8 +1,9 @@
 use anyhow::{Result, Context};
 use google_gmail1::{Gmail, hyper, hyper_rustls, oauth2};
 use log::{info, debug, warn};
+use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{RwLock, Mutex};
 
 use crate::config::GmailConfig;
 
@@ -12,8 +13,44 @@ pub struct EmailInfo {
     pub headers: String,
 }
 
+/// Cache for Gmail labels to avoid repeated API calls
+/// Maps label name -> label ID
+#[derive(Clone, Debug)]
+struct LabelCache {
+    labels: Arc<RwLock<HashMap<String, String>>>,
+}
+
+impl LabelCache {
+    fn new() -> Self {
+        Self {
+            labels: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Get a label ID by name from cache
+    async fn get(&self, name: &str) -> Option<String> {
+        let cache = self.labels.read().await;
+        cache.get(name).cloned()
+    }
+
+    /// Update the entire cache with fresh label data
+    async fn update(&self, labels: HashMap<String, String>) {
+        let mut cache = self.labels.write().await;
+        *cache = labels;
+        debug!("Label cache updated with {} labels", cache.len());
+    }
+
+    /// Get the number of cached labels
+    async fn len(&self) -> usize {
+        let cache = self.labels.read().await;
+        cache.len()
+    }
+}
+
 pub struct GmailClient {
     hub: Gmail<hyper_rustls::HttpsConnector<hyper::client::HttpConnector>>,
+    label_cache: LabelCache,
+    // Keep a reference to the authenticator for forcing token refresh
     auth: Arc<Mutex<oauth2::authenticator::Authenticator<hyper_rustls::HttpsConnector<hyper::client::HttpConnector>>>>,
 }
 
@@ -38,8 +75,6 @@ impl GmailClient {
         .await
         .context("Unable to create OAuth2 authenticator")?;
         
-        let auth_arc = Arc::new(Mutex::new(auth));
-        
         // Create HTTP client
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_native_roots()?
@@ -49,31 +84,44 @@ impl GmailClient {
         
         let client = hyper::Client::builder().build(connector);
         
+        // Keep a reference to the authenticator for forcing token refresh
+        let auth_arc = Arc::new(Mutex::new(auth));
+        
         // Create Gmail hub with appropriate scopes
         let hub = Gmail::new(client, auth_arc.lock().await.clone());
         
         info!("✅ Gmail API connection established successfully");
         
-        Ok(GmailClient { 
+        let client = GmailClient { 
             hub,
+            label_cache: LabelCache::new(),
             auth: auth_arc,
-        })
+        };
+        
+        // Initialize label cache on startup
+        if let Err(e) = client.refresh_label_cache().await {
+            warn!("⚠️  Failed to initialize label cache: {}", e);
+        } else {
+            info!("✅ Label cache initialized with {} labels", client.label_cache.len().await);
+        }
+        
+        Ok(client)
     }
     
-    /// Force refresh the OAuth2 token
-    /// This should be called periodically (e.g., every 45 minutes) to ensure the token stays valid
-    /// Google tokens expire after 1 hour, so refreshing at 45min provides a safety margin
+    /// Force refresh the OAuth2 token by making a lightweight API call
+    /// This triggers yup-oauth2's automatic token refresh mechanism
+    /// Google tokens expire after 1 hour, so calling this every 45min keeps them alive
     pub async fn refresh_token(&self) -> Result<()> {
         info!("🔄 Forcing OAuth2 token refresh...");
         
+        // Force token refresh by calling .token() which will refresh if expired or close to expiration
+        // This ensures the token cache file is updated
         let auth = self.auth.lock().await;
-        
-        // Get the current token - this will automatically refresh if needed
         let scopes = &[google_gmail1::api::Scope::Modify.as_ref()];
         
         match auth.token(scopes).await {
             Ok(_token) => {
-                info!("✅ Token refreshed successfully");
+                info!("✅ Token refreshed successfully and persisted to cache");
                 Ok(())
             }
             Err(e) => {
@@ -82,9 +130,64 @@ impl GmailClient {
             }
         }
     }
+
+    /// Refresh the label cache from Gmail API
+    /// Should be called at startup and before processing each batch of emails
+    async fn refresh_label_cache(&self) -> Result<()> {
+        debug!("🔄 Refreshing label cache...");
+        
+        let user_id = "me";
+        
+        let result = self.hub
+            .users()
+            .labels_list(user_id)
+            .add_scope(google_gmail1::api::Scope::Modify)
+            .doit()
+            .await
+            .context("Unable to list labels")?;
+        
+        let labels = result.1.labels.unwrap_or_default();
+        
+        // Build a HashMap of label name -> label ID
+        let label_map: HashMap<String, String> = labels
+            .into_iter()
+            .filter_map(|label| {
+                if let (Some(name), Some(id)) = (label.name, label.id) {
+                    Some((name, id))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        let count = label_map.len();
+        self.label_cache.update(label_map).await;
+        
+        debug!("✅ Label cache refreshed with {} labels", count);
+        Ok(())
+    }
+
+    /// Get a label ID from cache, with fallback to refresh if not found
+    async fn get_label_id(&self, label_name: &str) -> Option<String> {
+        // Try cache first
+        if let Some(id) = self.label_cache.get(label_name).await {
+            return Some(id);
+        }
+        
+        // If not in cache, refresh once and try again
+        debug!("Label '{}' not in cache, refreshing...", label_name);
+        if self.refresh_label_cache().await.is_ok() {
+            return self.label_cache.get(label_name).await;
+        }
+        
+        None
+    }
     
     pub async fn search_xsense_emails(&self) -> Result<Vec<String>> {
         info!("Searching for emails with label 'homemetrics/todo/xsense'");
+        
+        // Refresh label cache before searching
+        self.refresh_label_cache().await?;
         
         let user_id = "me";
         let query = "label:homemetrics/todo/xsense";
@@ -289,25 +392,9 @@ impl GmailClient {
         
         let user_id = "me";
         
-        // First, retrieve existing labels to get IDs
-        let labels_result = self.hub
-            .users()
-            .labels_list(user_id)
-            .add_scope(google_gmail1::api::Scope::Modify)
-            .doit()
-            .await
-            .context("Unable to list labels")?;
-        
-        let labels = labels_result.1.labels.unwrap_or_default();
-        
-        // Trouver les IDs des labels
-        let todo_label_id = labels.iter()
-            .find(|l| l.name.as_deref() == Some("homemetrics/todo/xsense"))
-            .and_then(|l| l.id.clone());
-        
-        let done_label_id = labels.iter()
-            .find(|l| l.name.as_deref() == Some("homemetrics/done/xsense"))
-            .and_then(|l| l.id.clone());
+        // Get label IDs from cache
+        let todo_label_id = self.get_label_id("homemetrics/todo/xsense").await;
+        let done_label_id = self.get_label_id("homemetrics/done/xsense").await;
         
         // Create modification request
         let mut modify_request = google_gmail1::api::ModifyMessageRequest::default();
@@ -348,6 +435,9 @@ impl GmailClient {
     pub async fn search_pool_emails(&self) -> Result<Vec<String>> {
         info!("Searching for emails with label 'homemetrics/todo/blueriot'");
         
+        // Refresh label cache before searching
+        self.refresh_label_cache().await?;
+        
         let user_id = "me";
         let query = "label:homemetrics/todo/blueriot";
         
@@ -379,33 +469,11 @@ impl GmailClient {
         
         let user_id = "me";
         
-        // First, retrieve existing labels to get IDs
-        let labels_result = self.hub
-            .users()
-            .labels_list(user_id)
-            .add_scope(google_gmail1::api::Scope::Modify)
-            .doit()
-            .await
-            .context("Unable to list labels")?;
-        
-        let labels = labels_result.1.labels.unwrap_or_default();
-        
-        // Find label IDs for Blue Riot
-        let todo_label_id = labels.iter()
-            .find(|l| l.name.as_deref() == Some("homemetrics/todo/blueriot"))
-            .and_then(|l| l.id.clone());
-        
-        let done_label_id = labels.iter()
-            .find(|l| l.name.as_deref() == Some("homemetrics/done/blueriot"))
-            .and_then(|l| l.id.clone());
-        
-        let inbox_label_id = labels.iter()
-            .find(|l| l.name.as_deref() == Some("INBOX"))
-            .and_then(|l| l.id.clone());
-        
-        let unread_label_id = labels.iter()
-            .find(|l| l.name.as_deref() == Some("UNREAD"))
-            .and_then(|l| l.id.clone());
+        // Get label IDs from cache
+        let todo_label_id = self.get_label_id("homemetrics/todo/blueriot").await;
+        let done_label_id = self.get_label_id("homemetrics/done/blueriot").await;
+        let inbox_label_id = self.get_label_id("INBOX").await;
+        let unread_label_id = self.get_label_id("UNREAD").await;
         
         // Create modification request
         let mut modify_request = google_gmail1::api::ModifyMessageRequest::default();

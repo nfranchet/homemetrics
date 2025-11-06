@@ -48,10 +48,20 @@ impl TemperatureExtractor {
     }
     
     pub fn extract_sensor_name(filename: &str) -> Result<String> {
-        // Expected format: "Thermo-{sensor_name}_Export data_{date}.csv"
-        // Examples: "Thermo-cabane_...", "Thermo-patio_...", "Thermo-poolhouse_..."
+        // Expected formats:
+        // 1. "Thermo-{sensor_name}_Export data_{date}.csv" (new format)
+        // 2. "{sensor_name}_Exporter les données_{date}.csv" (French format without Thermo- prefix)
         
+        // Try format with "Thermo-" prefix first
         if let Some(captures) = Regex::new(r"Thermo-([^_]+)_")?.captures(filename) {
+            if let Some(sensor_match) = captures.get(1) {
+                return Ok(sensor_match.as_str().to_string());
+            }
+        }
+        
+        // Try format without "Thermo-" prefix: extract first part before underscore
+        // Example: "Bureau_Exporter les données_20251031.csv" -> "Bureau"
+        if let Some(captures) = Regex::new(r"^([^_]+)_(?:Exporter|Export)")?.captures(filename) {
             if let Some(sensor_match) = captures.get(1) {
                 return Ok(sensor_match.as_str().to_string());
             }

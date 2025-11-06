@@ -113,13 +113,25 @@ impl EmailProcessingStrategy for XSenseStrategy {
             // 5. Send Slack notification (if not dry-run and has data)
             if !is_dry_run && total_readings > 0 {
                 if let Some(slack) = slack {
+                    // Extract "From" and "Subject" from headers
+                    // Format: "De: sender\nObjet: subject"
+                    let from = email_info.headers.lines()
+                        .find(|l| l.starts_with("De:"))
+                        .unwrap_or("De: Unknown")
+                        .trim_start_matches("De:")
+                        .trim();
+                    
+                    let subject = email_info.headers.lines()
+                        .find(|l| l.starts_with("Objet:"))
+                        .unwrap_or("Objet: Unknown")
+                        .trim_start_matches("Objet:")
+                        .trim();
+                    
                     let message = format!(
-                        "📊 New X-Sense data: {} temperature readings\nFrom: {}",
+                        "📊 New X-Sense data: {} temperature readings\nFrom: {}\nSubject: {}",
                         total_readings,
-                        email_info.headers.lines().find(|l| l.starts_with("Subject:"))
-                            .unwrap_or("Subject: Unknown")
-                            .trim_start_matches("Subject:")
-                            .trim()
+                        from,
+                        subject
                     );
                     info!("Sending Slack notification for X-Sense readings");
                     if let Err(e) = slack.send_message(&message).await {
