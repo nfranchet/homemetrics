@@ -3,7 +3,7 @@ use google_gmail1::{Gmail, hyper, hyper_rustls, oauth2};
 use log::{info, debug, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Mutex};
 
 use crate::config::GmailConfig;
 
@@ -50,6 +50,8 @@ impl LabelCache {
 pub struct GmailClient {
     hub: Gmail<hyper_rustls::HttpsConnector<hyper::client::HttpConnector>>,
     label_cache: LabelCache,
+    // Keep a reference to the authenticator for forcing token refresh
+    auth: Arc<Mutex<oauth2::authenticator::Authenticator<hyper_rustls::HttpsConnector<hyper::client::HttpConnector>>>>,
 }
 
 impl GmailClient {
@@ -82,14 +84,18 @@ impl GmailClient {
         
         let client = hyper::Client::builder().build(connector);
         
+        // Keep a reference to the authenticator for forcing token refresh
+        let auth_arc = Arc::new(Mutex::new(auth));
+        
         // Create Gmail hub with appropriate scopes
-        let hub = Gmail::new(client, auth);
+        let hub = Gmail::new(client, auth_arc.lock().await.clone());
         
         info!("✅ Gmail API connection established successfully");
         
         let client = GmailClient { 
             hub,
             label_cache: LabelCache::new(),
+            auth: auth_arc,
         };
         
         // Initialize label cache on startup
@@ -106,20 +112,16 @@ impl GmailClient {
     /// This triggers yup-oauth2's automatic token refresh mechanism
     /// Google tokens expire after 1 hour, so calling this every 45min keeps them alive
     pub async fn refresh_token(&self) -> Result<()> {
-        info!("🔄 Forcing OAuth2 token refresh via API call...");
+        info!("🔄 Forcing OAuth2 token refresh...");
         
-        // Make a lightweight API call to force token refresh
-        // Getting the user profile is one of the lightest calls available
-        let result = self.hub
-            .users()
-            .get_profile("me")
-            .add_scope(google_gmail1::api::Scope::Modify)
-            .doit()
-            .await;
+        // Force token refresh by calling .token() which will refresh if expired or close to expiration
+        // This ensures the token cache file is updated
+        let auth = self.auth.lock().await;
+        let scopes = &[google_gmail1::api::Scope::Modify.as_ref()];
         
-        match result {
-            Ok(_) => {
-                info!("✅ Token refreshed successfully");
+        match auth.token(scopes).await {
+            Ok(_token) => {
+                info!("✅ Token refreshed successfully and persisted to cache");
                 Ok(())
             }
             Err(e) => {

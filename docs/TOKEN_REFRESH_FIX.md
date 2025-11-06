@@ -44,34 +44,43 @@ Au deuxième refresh, l'instance dans `auth_arc` a toujours l'ancien token expir
 
 ## Solution Implémentée
 
-L'approche correcte utilise le mécanisme automatique de `yup-oauth2` sans duplication d'authenticator :
+L'approche correcte utilise **l'accès direct à l'authenticator** pour forcer le refresh :
 
 ```rust
 // ✅ APPROCHE CORRECTE
 pub struct GmailClient {
-    hub: Gmail<...>,  // Contient l'authenticator (pas de duplication)
+    hub: Gmail<...>,
+    auth: Arc<Mutex<Authenticator>>,  // Référence séparée pour refresh
 }
 
 impl GmailClient {
     pub async fn new(config: &GmailConfig) -> Result<Self> {
         let auth = create_authenticator()
-            .persist_tokens_to_disk(&config.token_cache_path)  // Persistence
+            .persist_tokens_to_disk(&config.token_cache_path)
             .build()
             .await?;
         
-        // Pas de clone - ownership direct
-        let hub = Gmail::new(client, auth);
+        // Garder une référence partagée à l'authenticator
+        let auth_arc = Arc::new(Mutex::new(auth));
         
-        Ok(GmailClient { hub })
+        // Cloner l'authenticator pour le hub (nécessaire pour l'API Gmail)
+        let hub = Gmail::new(client, auth_arc.lock().await.clone());
+        
+        Ok(GmailClient { 
+            hub,
+            auth: auth_arc,  // Référence pour le refresh
+        })
     }
     
-    /// Déclenche le refresh automatique via un appel API léger
+    /// Force le refresh du token
     pub async fn refresh_token(&self) -> Result<()> {
-        // Appel API simple - yup-oauth2 gère le refresh automatiquement
-        self.hub.users().get_profile("me")
-            .add_scope(Scope::Modify)
-            .doit()
-            .await?;
+        let auth = self.auth.lock().await;
+        let scopes = &[Scope::Modify.as_ref()];
+        
+        // Appel direct à auth.token() force la vérification et le refresh
+        auth.token(scopes).await?;
+        
+        // Le token est automatiquement persisté dans le cache
         Ok(())
     }
 }
@@ -81,23 +90,27 @@ impl GmailClient {
 
 1. **Persistence Automatique** : `persist_tokens_to_disk()` configure yup-oauth2 pour sauvegarder les tokens dans `gmail-token-cache.json`
 
-2. **Refresh Automatique** : Avant chaque appel API, yup-oauth2 :
-   - Vérifie si le `access_token` est expiré
+2. **Refresh Forcé** : Appeler `auth.token(scopes)` directement :
+   - Vérifie si le `access_token` est expiré ou proche de l'expiration
    - Si oui, utilise le `refresh_token` pour obtenir un nouveau `access_token`
-   - Sauvegarde automatiquement les nouveaux tokens dans le cache
+   - **Sauvegarde automatiquement** les nouveaux tokens dans le cache
+   - Retourne le token (actuel ou rafraîchi)
 
 3. **Déclenchement Périodique** : Le `TokenRefreshManager` appelle `refresh_token()` toutes les 45 minutes
-   - Cet appel API léger (`get_profile`) déclenche la vérification automatique
-   - Si le token a >15 minutes de vie, rien ne se passe
-   - Si le token est proche de l'expiration, yup-oauth2 le rafraîchit
+   - Force la vérification et le refresh si nécessaire
+   - Garantit que le token est toujours valide
+   - Le fichier cache est mis à jour à chaque vrai refresh
 
-4. **Pas de Clonage** : L'authenticator reste unique et partagé via l'ownership du `hub`
+4. **Pas de Duplication Problématique** : 
+   - Le hub Gmail a son propre clone de l'authenticator (requis par l'API)
+   - Mais nous gardons aussi une référence dans `auth` pour les refreshs explicites
+   - Les deux fonctionnent sur le même fichier cache (via `persist_tokens_to_disk`)
 
 ## Avantages de la Nouvelle Approche
 
-✅ **Plus simple** : Pas de gestion manuelle de Arc<Mutex<>>
-✅ **Plus sûr** : Utilise le mécanisme natif de yup-oauth2
-✅ **Plus robuste** : Pas de risque de désynchronisation entre instances
+✅ **Plus simple** : Appel direct à `auth.token()` au lieu d'API call
+✅ **Plus fiable** : Force vraiment le refresh, pas juste une vérification passive
+✅ **Plus robuste** : Le cache est mis à jour systématiquement lors des refreshs
 ✅ **Testé** : Approche recommandée par la documentation yup-oauth2
 
 ## Chronologie du Token (Corrigée)

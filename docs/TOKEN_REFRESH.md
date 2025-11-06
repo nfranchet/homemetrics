@@ -103,21 +103,29 @@ Boucle infinie :                              │
 
 ### Code Key Points
 
-**1. GmailClient avec auto-refresh** (`src/gmail_client.rs`) :
+**1. GmailClient avec refresh explicite** (`src/gmail_client.rs`) :
 ```rust
 pub struct GmailClient {
-    hub: Gmail<...>,  // Contient l'authenticator avec tokens persistés
+    hub: Gmail<...>,
+    auth: Arc<Mutex<Authenticator>>,  // ← Référence à l'authenticator pour refresh
 }
 
 pub async fn refresh_token(&self) -> Result<()> {
-    // Fait un appel API léger (get_profile) qui déclenche
-    // automatiquement le refresh par yup-oauth2 si nécessaire
-    self.hub.users().get_profile("me").doit().await?;
+    // Force le refresh en appelant directement auth.token()
+    // yup-oauth2 vérifie l'expiration et rafraîchit si nécessaire
+    let auth = self.auth.lock().await;
+    let scopes = &[Scope::Modify.as_ref()];
+    
+    auth.token(scopes).await?;  // ← Force la vérification et le refresh
+    // Le token est automatiquement persisté dans gmail-token-cache.json
     Ok(())
 }
 ```
 
-**Mécanisme**: L'authenticator de yup-oauth2 vérifie automatiquement l'expiration du token avant chaque appel API et utilise le `refresh_token` pour obtenir un nouveau `access_token` si nécessaire.
+**Différence clé** : Appeler `auth.token()` directement force yup-oauth2 à :
+1. Vérifier si le token est expiré ou proche de l'expiration
+2. Utiliser le `refresh_token` pour obtenir un nouveau `access_token` si nécessaire
+3. **Persister le nouveau token dans le cache** automatiquement
 
 **2. TokenRefreshManager** (`src/token_refresh.rs`) :
 ```rust
