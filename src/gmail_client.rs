@@ -119,7 +119,7 @@ impl GmailClient {
         let auth = self.auth.lock().await;
         let scopes = &[google_gmail1::api::Scope::Modify.as_ref()];
         
-        match auth.token(scopes).await {
+        match auth.force_refreshed_token(scopes).await {
             Ok(_token) => {
                 info!("✅ Token refreshed successfully and persisted to cache");
                 Ok(())
