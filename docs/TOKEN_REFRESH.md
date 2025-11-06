@@ -53,18 +53,21 @@ Boucle infinie :                              │
 
 ### Code Key Points
 
-**1. GmailClient partagé** (`src/gmail_client.rs`) :
+**1. GmailClient avec auto-refresh** (`src/gmail_client.rs`) :
 ```rust
 pub struct GmailClient {
-    hub: Gmail<...>,
-    auth: Arc<Mutex<Authenticator>>,  // ← Partagé entre threads
+    hub: Gmail<...>,  // Contient l'authenticator avec tokens persistés
 }
 
 pub async fn refresh_token(&self) -> Result<()> {
-    // Force un refresh en appelant auth.token()
-    // yup-oauth2 gère automatiquement le refresh si nécessaire
+    // Fait un appel API léger (get_profile) qui déclenche
+    // automatiquement le refresh par yup-oauth2 si nécessaire
+    self.hub.users().get_profile("me").doit().await?;
+    Ok(())
 }
 ```
+
+**Mécanisme**: L'authenticator de yup-oauth2 vérifie automatiquement l'expiration du token avant chaque appel API et utilise le `refresh_token` pour obtenir un nouveau `access_token` si nécessaire.
 
 **2. TokenRefreshManager** (`src/token_refresh.rs`) :
 ```rust
