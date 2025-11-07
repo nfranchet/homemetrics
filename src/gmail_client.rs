@@ -194,25 +194,56 @@ impl GmailClient {
         
         debug!("Search criteria: {}", query);
         
-        let result = self.hub
-            .users()
-            .messages_list(user_id)
-            .q(query)
-            .add_scope(google_gmail1::api::Scope::Modify)
-            .doit()
-            .await
-            .context("Error searching for emails")?;
+        let mut all_message_ids = Vec::new();
+        let mut page_token: Option<String> = None;
+        let mut page_count = 0;
         
-        let message_ids: Vec<String> = result.1
-            .messages
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|msg| msg.id)
-            .collect();
+        loop {
+            page_count += 1;
+            debug!("Fetching page {} of results...", page_count);
+            
+            let mut request = self.hub
+                .users()
+                .messages_list(user_id)
+                .q(query)
+                .add_scope(google_gmail1::api::Scope::Modify);
+            
+            // Add page token if we have one
+            if let Some(token) = page_token.as_ref() {
+                request = request.page_token(token);
+            }
+            
+            let result = request
+                .doit()
+                .await
+                .context("Error searching for emails")?;
+            
+            let response = result.1;
+            
+            // Collect message IDs from this page
+            if let Some(messages) = response.messages {
+                let page_ids: Vec<String> = messages
+                    .into_iter()
+                    .filter_map(|msg| msg.id)
+                    .collect();
+                
+                debug!("Page {} returned {} messages", page_count, page_ids.len());
+                all_message_ids.extend(page_ids);
+            }
+            
+            // Check if there are more pages
+            page_token = response.next_page_token;
+            if page_token.is_none() {
+                break;
+            }
+            
+            info!("More results available, fetching next page...");
+        }
         
-        info!("Found {} email(s) with label 'homemetrics/todo/xsense'", message_ids.len());
+        info!("Found {} email(s) with label 'homemetrics/todo/xsense' across {} page(s)", 
+              all_message_ids.len(), page_count);
         
-        Ok(message_ids)
+        Ok(all_message_ids)
     }
     
     /// List all Gmail labels with their IDs and names
@@ -443,25 +474,56 @@ impl GmailClient {
         
         debug!("Search criteria: {}", query);
         
-        let result = self.hub
-            .users()
-            .messages_list(user_id)
-            .q(query)
-            .add_scope(google_gmail1::api::Scope::Modify)
-            .doit()
-            .await
-            .context("Error searching for pool emails")?;
+        let mut all_message_ids = Vec::new();
+        let mut page_token: Option<String> = None;
+        let mut page_count = 0;
         
-        let message_ids: Vec<String> = result.1
-            .messages
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|msg| msg.id)
-            .collect();
+        loop {
+            page_count += 1;
+            debug!("Fetching page {} of results...", page_count);
+            
+            let mut request = self.hub
+                .users()
+                .messages_list(user_id)
+                .q(query)
+                .add_scope(google_gmail1::api::Scope::Modify);
+            
+            // Add page token if we have one
+            if let Some(token) = page_token.as_ref() {
+                request = request.page_token(token);
+            }
+            
+            let result = request
+                .doit()
+                .await
+                .context("Error searching for pool emails")?;
+            
+            let response = result.1;
+            
+            // Collect message IDs from this page
+            if let Some(messages) = response.messages {
+                let page_ids: Vec<String> = messages
+                    .into_iter()
+                    .filter_map(|msg| msg.id)
+                    .collect();
+                
+                debug!("Page {} returned {} messages", page_count, page_ids.len());
+                all_message_ids.extend(page_ids);
+            }
+            
+            // Check if there are more pages
+            page_token = response.next_page_token;
+            if page_token.is_none() {
+                break;
+            }
+            
+            info!("More results available, fetching next page...");
+        }
         
-        info!("Found {} email(s) with label 'homemetrics/todo/blueriot'", message_ids.len());
+        info!("Found {} email(s) with label 'homemetrics/todo/blueriot' across {} page(s)", 
+              all_message_ids.len(), page_count);
         
-        Ok(message_ids)
+        Ok(all_message_ids)
     }
     
     pub async fn mark_pool_email_as_processed(&self, message_id: &str) -> Result<()> {
