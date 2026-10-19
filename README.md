@@ -58,6 +58,10 @@ sudo -u postgres psql -d homemetrics -c "CREATE EXTENSION IF NOT EXISTS timescal
 cargo build --release
 ```
 
+## Kubernetes with Argo CD
+
+Kubernetes manifests are in [`k8s/`](k8s/). They deploy the daemon as a single worker, read credentials through External Secrets Operator, and persist the Gmail token cache on a volume. The database remains external. See [`k8s/README.md`](k8s/README.md) for secret-store setup, database configuration, and an Argo CD Application image pin example.
+
 ## Configuration
 
 ### Variables d'environnement requises
