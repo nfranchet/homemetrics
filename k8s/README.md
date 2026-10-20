@@ -4,16 +4,16 @@ The `k8s/` directory is a Kustomize base for deploying HomeMetrics with Argo CD.
 
 ## Configure the cluster and secrets
 
-1. Ensure External Secrets Operator is installed and create a `ClusterSecretStore` named `homemetrics-secrets`, or change `secretStoreRef` in `external-secret.yaml` to the store already used by your cluster.
-2. Add a remote secret named `homemetrics/production` with these properties:
+1. Install External Secrets Operator and configure the `homemetrics-secrets` `ClusterSecretStore`. The Ansible Kubernetes role installs ESO and configures this store to read the `Applications` vault in 1Password. Its service-account token is sourced from `OP_TOKEN` at playbook runtime and stored in Kubernetes outside Git.
+2. Ensure the `HomeMetrics` item in the `Applications` vault has these fields:
 
-   | Property | Value |
+   | Field | Value |
    | --- | --- |
-   | `gmail-credentials-json` | OAuth client credentials JSON |
-   | `gmail-token-cache-json` | Pre-authorized token cache JSON |
-   | `db-password` | Database password |
-   | `slack-bot-token` | Optional Slack bot token |
-   | `slack-channel-id` | Optional Slack channel ID |
+   | `gmail_credentials.json` | OAuth client credentials JSON |
+   | `gmail_cache-token.json` | Pre-authorized token cache JSON |
+   | `db_password` | Database password |
+   | `slack_bot_token` | Optional Slack bot token |
+   | `slack_channel_id` | Optional Slack channel ID |
 
    The pod copies the initial token cache to its persistent volume only when no cache exists there. Token refreshes then update the persistent copy. Complete the OAuth browser authorization before storing the initial cache; the pod cannot perform that interactive first login.
 3. Set the database host, name, username, and schedule in `configmap.yaml`. The database must already have the schema from `init_db.sql` and the TimescaleDB extension enabled.
