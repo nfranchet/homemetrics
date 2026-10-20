@@ -3,6 +3,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: homemetrics-state
 spec:
+  storageClassName: local-path
   accessModes:
     - ReadWriteOnce
   resources:
