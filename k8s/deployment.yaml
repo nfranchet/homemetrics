@@ -11,6 +11,8 @@ spec:
       app.kubernetes.io/name: homemetrics
   template:
     metadata:
+      annotations:
+        homemetrics.secrets-revision: "db-credentials-v2"
       labels:
         app.kubernetes.io/name: homemetrics
     spec:

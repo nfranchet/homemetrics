@@ -11,9 +11,10 @@ The `k8s/` directory is a Kustomize base for deploying HomeMetrics with Argo CD.
    | --- | --- |
    | `gmail_credentials.json` | OAuth client credentials JSON |
    | `gmail_cache-token.json` | Pre-authorized token cache JSON |
-   | `db_password` | Database password |
    | `slack_bot_token` | Optional Slack bot token |
    | `slack_channel_id` | Optional Slack channel ID |
+
+   The database password is read from the `password` field of the `TimescaleDB Homemetrics` item in the `Applications` vault. This must match the password Ansible provisions for the `homemetrics` PostgreSQL account.
 
    The pod copies the initial token cache to its persistent volume only when no cache exists there. Token refreshes then update the persistent copy. Complete the OAuth browser authorization before storing the initial cache; the pod cannot perform that interactive first login.
 3. Set the database host, name, username, and schedule in `homemetrics.env`. For the HomeNetwork cluster, the host is `timescaledb-rw.timescaledb.svc`. Kustomize hashes this file into the ConfigMap name so changes roll out the pod. The database schema is initialized by the application on startup.
