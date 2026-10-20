@@ -6,4 +6,7 @@ resources:
   - external-secret.yaml
   - deployment.yaml
   - pvc.yaml
-  - configmap.yaml
+configMapGenerator:
+  - name: homemetrics-config
+    envs:
+      - homemetrics.env
