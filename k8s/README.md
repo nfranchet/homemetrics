@@ -16,7 +16,7 @@ The `k8s/` directory is a Kustomize base for deploying HomeMetrics with Argo CD.
    | `slack_channel_id` | Optional Slack channel ID |
 
    The pod copies the initial token cache to its persistent volume only when no cache exists there. Token refreshes then update the persistent copy. Complete the OAuth browser authorization before storing the initial cache; the pod cannot perform that interactive first login.
-3. Set the database host, name, username, and schedule in `configmap.yaml`. The database must already have the schema from `init_db.sql` and the TimescaleDB extension enabled.
+3. Set the database host, name, username, and schedule in `configmap.yaml`. For the HomeNetwork cluster, the host is `timescaledb-rw.timescaledb.svc`. The database must already have the schema from `init_db.sql` and the TimescaleDB extension enabled.
 4. Ensure the cluster can pull `ghcr.io/nfranchet/homemetrics`. Make the GHCR package public, or configure an `imagePullSecret` in the pod spec for a private package. The persistent volume claim uses the `local-path` StorageClass and requests 1 GiB.
 
 ## Connect Argo CD

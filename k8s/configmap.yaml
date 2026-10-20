@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: homemetrics-config
 data:
-  DB_HOST: "timescaledb.example.internal"
+  DB_HOST: "timescaledb-rw.timescaledb.svc"
   DB_PORT: "5432"
   DB_NAME: "homemetrics"
   DB_USERNAME: "homemetrics"
